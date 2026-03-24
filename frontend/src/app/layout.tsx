@@ -4,6 +4,8 @@ import "./globals.css";
 import { MainLayout } from "../components/layout/MainLayout";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { cn } from "@/lib/utils";
+import { FocusProvider } from "@/lib/FocusContext";
+import { HabitProvider } from "@/lib/HabitContext";
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -37,7 +39,11 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col font-sans bg-background text-foreground overflow-hidden transition-colors duration-300">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-          <MainLayout>{children}</MainLayout>
+          <FocusProvider>
+            <HabitProvider>
+              <MainLayout>{children}</MainLayout>
+            </HabitProvider>
+          </FocusProvider>
         </ThemeProvider>
       </body>
     </html>
