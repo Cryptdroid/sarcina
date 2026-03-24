@@ -63,7 +63,7 @@ export function DayScore() {
         </svg>
         
         <div className="flex flex-col items-center">
-          <span className="text-3xl font-bold font-heading text-white">{score}</span>
+          <span className="text-3xl font-bold font-heading text-foreground">{score}</span>
         </div>
       </div>
       

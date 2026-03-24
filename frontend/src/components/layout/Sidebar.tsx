@@ -4,17 +4,18 @@ import React, { useState } from 'react';
 import { Sidebar as AceternitySidebar, SidebarBody, SidebarLink } from '../ui/sidebar';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { ThemeToggle } from '../ui/ThemeToggle';
 
 export const Logo = () => {
   return (
-    <Link href="/" className="font-normal flex space-x-2 items-center text-sm py-4 text-white relative z-20">
+    <Link href="/" className="font-normal flex space-x-2 items-center text-sm py-4 text-foreground relative z-20">
       <svg className="w-6 h-6 flex-shrink-0 text-[var(--accent-electric-blue)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
       </svg>
       <motion.span
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="font-heading font-bold text-lg text-white whitespace-pre"
+        className="font-heading font-bold text-lg text-foreground whitespace-pre"
       >
         FlowState
       </motion.span>
@@ -24,7 +25,7 @@ export const Logo = () => {
 
 export const LogoIcon = () => {
   return (
-    <Link href="/" className="font-normal flex space-x-2 flex-shrink-0 items-center text-sm py-4 text-white relative z-20 w-fit">
+    <Link href="/" className="font-normal flex space-x-2 flex-shrink-0 items-center text-sm py-4 text-foreground relative z-20 w-fit">
       <svg className="w-6 h-6 flex-shrink-0 text-[var(--accent-electric-blue)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
       </svg>
@@ -108,19 +109,20 @@ export function Sidebar() {
           </div>
         </div>
         
-        <div className="pt-4 border-t border-[var(--glass-border)]">
+        <div className="pt-4 border-t border-[var(--glass-border)] flex flex-col gap-2 overflow-hidden">
            <SidebarLink
              link={{
                label: 'Personal Settings',
                href: '#',
                icon: (
-                 <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[var(--accent-neon-purple)] to-[var(--accent-electric-blue)] flex-shrink-0 flex items-center justify-center text-[8px] text-white font-bold border border-white/20">
+                 <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[var(--accent-neon-purple)] to-[var(--accent-electric-blue)] flex-shrink-0 flex items-center justify-center text-[8px] text-foreground font-bold border border-white/20">
                    U
                  </div>
                ),
              }}
-             className="hover:text-white transition-colors"
+             className="hover:text-[var(--accent-electric-blue)] transition-colors text-[var(--foreground-muted)]"
            />
+           <ThemeToggle />
         </div>
       </SidebarBody>
     </AceternitySidebar>

@@ -6,20 +6,20 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* Deep navy/charcoal background */
-  --background-panel: rgba(22, 27, 34, 0.6);
-  --foreground-muted: #94A3B8;
+  /* Light mode palette mappings */
+  --background-panel: rgba(255, 255, 255, 0.6);
+  --foreground-muted: #64748B;
 
-  /* Electric accent colors */
+  /* Electric accent colors (slightly darker/richer for light mode legibility if needed, but keeping vibrant for aesthetic) */
   --accent-electric-blue: #00F0FF;
   --accent-neon-purple: #B026FF;
   --accent-vibrant-green: #39FF14;
-  --accent-energy-low: #00F0FF; 
-  --accent-energy-med: #B026FF; 
-  --accent-energy-high: #FF1053; 
+  --accent-energy-low: #0099FF; 
+  --accent-energy-med: #9000FF; 
+  --accent-energy-high: #E60039; 
 
   /* Surface borders for glassmorphism */
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(0, 0, 0, 0.08);
   --glass-glow: rgba(0, 240, 255, 0.15);
   
   /* Shadcn / Base Colors (Light Mode) */
@@ -46,6 +46,17 @@
 
 /* Dark Mode Overrides */
 .dark {
+  /* Custom App Variables */
+  --background-panel: rgba(22, 27, 34, 0.6);
+  --foreground-muted: #94A3B8;
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-glow: rgba(0, 240, 255, 0.15);
+
+  --accent-energy-low: #00F0FF; 
+  --accent-energy-med: #B026FF; 
+  --accent-energy-high: #FF1053; 
+
+  /* Shadcn dark mode */
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -82,7 +93,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground font-sans;

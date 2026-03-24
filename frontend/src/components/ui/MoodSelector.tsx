@@ -32,8 +32,8 @@ export function MoodSelector() {
             onClick={() => setMood(m)}
             className={`flex-1 py-2 px-1 rounded-lg text-xs font-semibold transition-all duration-300 ${
               mood === m 
-                ? 'bg-white/10 text-white shadow-sm shadow-white/5' 
-                : 'text-[var(--foreground-muted)] hover:bg-white/5 hover:text-white'
+                ? 'bg-white/10 text-foreground shadow-sm shadow-white/5' 
+                : 'text-[var(--foreground-muted)] hover:bg-white/5 hover:text-foreground'
             }`}
             style={{
               borderColor: mood === m ? getMoodColor(m) : 'transparent',

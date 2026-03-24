@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { Syne, DM_Sans, Geist } from "next/font/google";
 import "./globals.css";
 import { MainLayout } from "../components/layout/MainLayout";
+import { ThemeProvider } from "../components/ThemeProvider";
 import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
 const syne = Syne({
   variable: "--font-syne",
@@ -31,10 +32,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn("h-full", "antialiased", "dark", syne.variable, dmSans.variable, "font-sans", geist.variable)}
+      suppressHydrationWarning
+      className={cn("h-full antialiased", syne.variable, dmSans.variable, geist.variable)}
     >
-      <body className="min-h-full flex flex-col font-sans bg-background text-foreground overflow-hidden">
-        <MainLayout>{children}</MainLayout>
+      <body className="min-h-full flex flex-col font-sans bg-background text-foreground overflow-hidden transition-colors duration-300">
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          <MainLayout>{children}</MainLayout>
+        </ThemeProvider>
       </body>
     </html>
   );
