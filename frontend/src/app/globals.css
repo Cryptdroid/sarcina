@@ -1,27 +1,9 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Corrected Custom Variant for Dark Mode */
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* Deep navy/charcoal background */
-  --background-panel: rgba(22, 27, 34, 0.6);
-  --foreground-muted: #94A3B8;
-
-  /* Electric accent colors */
-  --accent-electric-blue: #00F0FF;
-  --accent-neon-purple: #B026FF;
-  --accent-vibrant-green: #39FF14;
-  --accent-energy-low: #00F0FF; 
-  --accent-energy-med: #B026FF; 
-  --accent-energy-high: #FF1053; 
-
-  /* Surface borders for glassmorphism */
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-glow: rgba(0, 240, 255, 0.15);
-  
   /* Shadcn / Base Colors (Light Mode) */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -42,85 +24,38 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
+
+  /* Custom Glass & Cyberpunk Variables */
+  --background-panel: rgba(22, 27, 34, 0.6);
+  --foreground-muted: #94A3B8;
+  --accent-electric-blue: #00F0FF;
+  --accent-neon-purple: #B026FF;
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-glow: rgba(0, 240, 255, 0.15);
 }
 
-/* Dark Mode Overrides */
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-muted: var(--foreground-muted);
   --color-panel: var(--background-panel);
   --color-electric-blue: var(--accent-electric-blue);
   --color-neon-purple: var(--accent-neon-purple);
   --color-border: var(--border);
   --color-primary: var(--primary);
-  --color-accent: var(--accent);
   --radius-lg: var(--radius);
-  /* Add other variables here as needed for your theme */
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground font-sans;
-  }
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-bold;
-  }
-}
-
-@layer components {
-  .glass-panel {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)];
-  }
-
-  .glass-card {
-    @apply bg-[var(--background-panel)] backdrop-blur-md border border-[var(--glass-border)] rounded-2xl transition-all duration-300;
-  }
-
-  .glass-card:hover {
-    @apply border-white/20 shadow-[0_0_20px_var(--glass-glow)] -translate-y-1;
-  }
-
-  .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-[var(--accent-electric-blue)] to-[var(--accent-neon-purple)];
-  }
-}
-
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
 }

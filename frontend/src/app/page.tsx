@@ -1,4 +1,6 @@
-import React from 'react';
+"use client";
+import React, { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import ProductivityModule from "@/components/ProductivityModule";
 import { MoodSelector } from '../components/ui/MoodSelector';
 import { DayScore } from '../components/ui/DayScore';
@@ -8,14 +10,23 @@ import { PlannerWidget } from '../components/dashboard/PlannerWidget';
 import { FocusTimerWidget } from '../components/dashboard/FocusTimerWidget';
 import { HabitTrackerWidget } from '../components/dashboard/HabitTrackerWidget';
 import { QuickNotesWidget } from '../components/dashboard/QuickNotesWidget';
+import { Glow } from '../components/ui/Glow';
+
+type UiMode = 'Focus' | 'Chill' | 'Planning';
 
 export default function Home() {
+  const [uiMode, setUiMode] = useState<UiMode>('Focus');
+  const [timerActive, setTimerActive] = useState(false);
+
   return (
     <div className="min-h-screen bg-slate-950 p-4 md:p-8 max-w-[1600px] mx-auto w-full h-[calc(100dvh-4rem)] md:h-[100dvh] overflow-y-auto overflow-x-hidden custom-scrollbar pb-24 md:pb-8 selection:bg-fuchsia-500/30 relative">
       
       {/* Background glow effects from sanat branch */}
       <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-violet-500/20 via-violet-500/5 to-transparent pointer-events-none mix-blend-screen" />
       <div className="absolute bottom-0 right-0 w-full h-[500px] bg-gradient-to-t from-emerald-500/10 to-transparent pointer-events-none mix-blend-screen" />
+      <AnimatePresence>
+        {timerActive && <Glow color="rgba(139, 92, 246, 0.5)" />}
+      </AnimatePresence>
 
       <div className="relative z-10 flex flex-col gap-6">
         {/* Header section */}
@@ -25,33 +36,41 @@ export default function Home() {
         <ProductivityModule />
         
         {/* Main Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+        <AnimatePresence>
+        <motion.div 
+          key={uiMode}
+          className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
           
           {/* Left Column - Core Tools */}
-          <div className="lg:col-span-8 flex flex-col gap-6">
+          <div className={`lg:col-span-${uiMode === 'Focus' ? 8 : uiMode === 'Planning' ? 5 : 4} flex flex-col gap-6`}>
             <TaskManagerWidget />
             <PlannerWidget />
           </div>
 
           {/* Right Column - Focus & Gamification */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
+          <div className={`lg:col-span-${uiMode === 'Focus' ? 4 : uiMode === 'Planning' ? 7 : 8} flex flex-col gap-6`}>
             
             {/* Top Row: Mood & Score */}
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 xl:col-span-1">
-                <MoodSelector />
+                <MoodSelector setUiMode={setUiMode} />
               </div>
               <div className="col-span-2 xl:col-span-1 h-full">
                 <DayScore />
               </div>
             </div>
 
-            <FocusTimerWidget />
+            <FocusTimerWidget setTimerActive={setTimerActive} />
             <HabitTrackerWidget />
             <QuickNotesWidget />
 
           </div>
-        </div>
+        </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );

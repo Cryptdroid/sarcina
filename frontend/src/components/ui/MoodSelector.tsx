@@ -3,9 +3,21 @@
 import { useState } from 'react';
 
 type Mood = 'Low' | 'Medium' | 'High';
+type UiMode = 'Focus' | 'Chill' | 'Planning';
 
-export function MoodSelector() {
+interface MoodSelectorProps {
+  setUiMode: (mode: UiMode) => void;
+}
+
+export function MoodSelector({ setUiMode }: MoodSelectorProps) {
   const [mood, setMood] = useState<Mood>('Medium');
+
+  const handleMoodChange = (newMood: Mood) => {
+    setMood(newMood);
+    if (newMood === 'High') setUiMode('Focus');
+    else if (newMood === 'Medium') setUiMode('Planning');
+    else setUiMode('Chill');
+  };
 
   const getMoodColor = (m: Mood) => {
     switch(m) {
@@ -17,7 +29,7 @@ export function MoodSelector() {
   };
 
   return (
-    <div className="glass-card p-5 h-full flex flex-col justify-between">
+    <div className="widget p-5 h-full flex flex-col justify-between">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-xs font-heading font-bold text-[var(--foreground-muted)] uppercase tracking-wider">Energy</h3>
         <span className="text-[10px] font-bold px-2 py-1 rounded bg-white/5 border border-white/10" style={{ color: getMoodColor(mood) }}>
@@ -29,7 +41,7 @@ export function MoodSelector() {
         {(['Low', 'Medium', 'High'] as Mood[]).map((m) => (
           <button
             key={m}
-            onClick={() => setMood(m)}
+            onClick={() => handleMoodChange(m)}
             className={`flex-1 py-2 px-1 rounded-lg text-xs font-semibold transition-all duration-300 ${
               mood === m 
                 ? 'bg-white/10 text-white shadow-sm shadow-white/5' 
