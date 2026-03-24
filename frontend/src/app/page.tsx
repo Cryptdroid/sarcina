@@ -1,3 +1,4 @@
+import React from 'react';
 import { MoodSelector } from '../components/ui/MoodSelector';
 import { DayScore } from '../components/ui/DayScore';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
@@ -16,15 +17,13 @@ export default function Dashboard() {
       {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full relative z-10">
         
-        {/* Left Column - Core Tools
-            Member 2's workspace */}
+        {/* Left Column - Core Tools (Member 2's workspace) */}
         <div className="lg:col-span-8 flex flex-col gap-6">
           <TaskManagerWidget />
           <PlannerWidget />
         </div>
 
-        {/* Right Column - Focus & Gamification
-            Member 3 & 4 workspace */}
+        {/* Right Column - Focus & Gamification (Member 3 & 4 workspace) */}
         <div className="lg:col-span-4 flex flex-col gap-6">
           
           {/* Top Row: Mood & Score */}
