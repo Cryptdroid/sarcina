@@ -11,6 +11,12 @@ type TaskSnapshot = {
   completed: boolean;
 };
 
+type EnergyLevel = 'Low' | 'Medium' | 'High';
+
+interface DayScoreProps {
+  energyLevel: EnergyLevel;
+}
+
 function readTaskSnapshot(): TaskSnapshot[] {
   return getInitialTasks().map((task) => ({
     id: task.id,
@@ -18,7 +24,7 @@ function readTaskSnapshot(): TaskSnapshot[] {
   }));
 }
 
-export function DayScore() {
+export function DayScore({ energyLevel }: DayScoreProps) {
   const { habits, todayStr } = useHabits();
   const { focusMinutesToday, focusSessionsToday } = useFocus();
   const [tasks, setTasks] = useState<TaskSnapshot[]>([]);
@@ -56,6 +62,7 @@ export function DayScore() {
     focusMinutes: focusMinutesToday,
     focusSessions: focusSessionsToday,
     habitStreakAverage: avgHabitStreak,
+    energyLevel,
   });
 
   const radius = 36;

@@ -56,7 +56,7 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center px-4 py-8">
       <section className="glass-card w-full max-w-md p-7 md:p-8">
-        <p className="text-xs uppercase tracking-[0.2em] text-(--foreground-muted)">FlowState Account</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-(--foreground-muted)">SARCINA Account</p>
         <h1 className="mt-2 text-3xl font-heading font-semibold text-foreground">
           {mode === "signup" ? "Create your account" : "Welcome back"}
         </h1>

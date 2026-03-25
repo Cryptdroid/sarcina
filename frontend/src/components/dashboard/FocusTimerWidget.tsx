@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
 import { useFocus } from "@/lib/FocusContext";
 
@@ -16,9 +16,61 @@ export function FocusTimerWidget({ setTimerActive }: FocusTimerWidgetProps) {
     adjustCurrentTime, setCurrentTimeMinutes, formatTime,
   } = useFocus();
 
+  const [workInput, setWorkInput] = useState(String(workDuration));
+  const [breakInput, setBreakInput] = useState(String(breakDuration));
+  const [sessionInput, setSessionInput] = useState(String(Math.max(1, Math.round(timeLeft / 60))));
+  const [isEditingSession, setIsEditingSession] = useState(false);
+
   useEffect(() => {
     setTimerActive?.(isRunning);
   }, [isRunning, setTimerActive]);
+
+  useEffect(() => {
+    setWorkInput(String(workDuration));
+  }, [workDuration]);
+
+  useEffect(() => {
+    setBreakInput(String(breakDuration));
+  }, [breakDuration]);
+
+  useEffect(() => {
+    if (!isEditingSession) {
+      setSessionInput(String(Math.max(1, Math.round(timeLeft / 60))));
+    }
+  }, [timeLeft, isEditingSession]);
+
+  const commitWorkInput = () => {
+    const parsed = Number(workInput);
+    if (!Number.isFinite(parsed)) {
+      setWorkInput(String(workDuration));
+      return;
+    }
+    const next = Math.max(1, Math.min(240, Math.round(parsed)));
+    setWorkDuration(next);
+    setWorkInput(String(next));
+  };
+
+  const commitBreakInput = () => {
+    const parsed = Number(breakInput);
+    if (!Number.isFinite(parsed)) {
+      setBreakInput(String(breakDuration));
+      return;
+    }
+    const next = Math.max(1, Math.min(240, Math.round(parsed)));
+    setBreakDuration(next);
+    setBreakInput(String(next));
+  };
+
+  const commitSessionInput = () => {
+    const parsed = Number(sessionInput);
+    if (!Number.isFinite(parsed)) {
+      setSessionInput(String(Math.max(1, Math.round(timeLeft / 60))));
+      return;
+    }
+    const next = Math.max(1, Math.min(240, Math.round(parsed)));
+    setCurrentTimeMinutes(next);
+    setSessionInput(String(next));
+  };
 
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
@@ -114,8 +166,14 @@ export function FocusTimerWidget({ setTimerActive }: FocusTimerWidgetProps) {
               type="number"
               min={1}
               max={240}
-              value={workDuration}
-              onChange={(event) => setWorkDuration(Math.max(1, Math.min(240, Number(event.target.value) || 1)))}
+              value={workInput}
+              onChange={(event) => setWorkInput(event.target.value)}
+              onBlur={commitWorkInput}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+              }}
               className="mt-1 w-full bg-transparent text-foreground focus:outline-none"
             />
           </label>
@@ -125,8 +183,14 @@ export function FocusTimerWidget({ setTimerActive }: FocusTimerWidgetProps) {
               type="number"
               min={1}
               max={240}
-              value={breakDuration}
-              onChange={(event) => setBreakDuration(Math.max(1, Math.min(240, Number(event.target.value) || 1)))}
+              value={breakInput}
+              onChange={(event) => setBreakInput(event.target.value)}
+              onBlur={commitBreakInput}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+              }}
               className="mt-1 w-full bg-transparent text-foreground focus:outline-none"
             />
           </label>
@@ -147,8 +211,18 @@ export function FocusTimerWidget({ setTimerActive }: FocusTimerWidgetProps) {
                 type="number"
                 min={1}
                 max={240}
-                value={Math.max(1, Math.round(timeLeft / 60))}
-                onChange={(event) => setCurrentTimeMinutes(Number(event.target.value) || 1)}
+                value={sessionInput}
+                onFocus={() => setIsEditingSession(true)}
+                onChange={(event) => setSessionInput(event.target.value)}
+                onBlur={() => {
+                  commitSessionInput();
+                  setIsEditingSession(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.currentTarget.blur();
+                  }
+                }}
                 className="w-14 rounded bg-transparent text-center text-foreground focus:outline-none"
               />
               <button

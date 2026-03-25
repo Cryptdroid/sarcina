@@ -80,6 +80,7 @@ export function TaskManagerWidget() {
   const [tasks, setTasks] = useState<Task[]>(getInitialTasks);
   const [newTask, setNewTask] = useState("");
   const [breakdownLoadingById, setBreakdownLoadingById] = useState<Record<string, boolean>>({});
+  const [expandedSubtasksById, setExpandedSubtasksById] = useState<Record<string, boolean>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const completedCount = tasks.filter((task) => task.completed).length;
@@ -150,6 +151,7 @@ export function TaskManagerWidget() {
 
       const optimistic = tasks.map((t) => (t.id === taskId ? { ...t, subTasks: merged } : t));
       setTasks(optimistic);
+      setExpandedSubtasksById((prev) => ({ ...prev, [taskId]: true }));
       await updateTask(taskId, { subTasks: merged });
     } catch {
       setErrorMessage("Could not break down this task right now. Please try again.");
@@ -201,10 +203,19 @@ export function TaskManagerWidget() {
 
     try {
       await removeTask(taskId);
+      const latest = await syncTasks();
+      setTasks(latest);
     } catch {
       setTasks(snapshot);
-      setErrorMessage("Could not delete task right now.");
+      setErrorMessage("Could not delete task right now. Please try again.");
     }
+  };
+
+  const toggleSubtasks = (taskId: string) => {
+    setExpandedSubtasksById((prev) => ({
+      ...prev,
+      [taskId]: !prev[taskId],
+    }));
   };
 
   return (
@@ -252,33 +263,46 @@ export function TaskManagerWidget() {
         <div className="mt-2 flex items-center justify-between text-[11px]">
           <span className="text-(--foreground-muted)">Focus score: {completionPercent}%</span>
           <span className="text-foreground/80">
-            {nextDueTask?.dueDate ? `Next due ${nextDueTask.dueDate}` : "No upcoming due date"}
+            {nextDueTask?.dueDate ? `Next due ${nextDueTask.dueDate}${nextDueTask.dueTime ? ` ${nextDueTask.dueTime}` : ""}` : "No upcoming due date"}
           </span>
         </div>
       </div>
-      <div className="flex-1 space-y-2">
+      <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
         {tasks.map((task) => (
           <motion.div key={task.id} layout>
-            <div className="flex items-center justify-between p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+            <div className="flex items-start justify-between gap-3 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
               <button
                 type="button"
                 onClick={() => toggleTask(task.id)}
-                className="flex items-center gap-2 text-left"
+                className="flex min-w-0 flex-1 items-start gap-2 text-left"
               >
-                <span className={`h-4 w-4 rounded border border-(--glass-border) ${task.completed ? "bg-black border-black dark:bg-white dark:border-white" : "bg-transparent"}`} />
-                <span className={`${task.completed ? "line-through text-(--foreground-muted)" : "text-foreground"}`}>
+                <span className={`mt-0.5 h-4 w-4 shrink-0 rounded border border-(--glass-border) ${task.completed ? "bg-black border-black dark:bg-white dark:border-white" : "bg-transparent"}`} />
+                <span className={`wrap-break-word leading-relaxed ${task.completed ? "line-through text-(--foreground-muted)" : "text-foreground"}`}>
                   {task.text}
                 </span>
               </button>
-              <span className={`rounded-md border px-1.5 py-0.5 text-[10px] ${urgencyClass(getUrgency(task))}`}>
-                {urgencyLabel(getUrgency(task))}
-              </span>
-              {task.dueDate ? (
-                <span className="text-[11px] text-(--foreground-muted) mr-2">
-                  {task.dueDate}
+
+              <div className="flex shrink-0 items-center gap-2">
+                <span className={`rounded-md border px-1.5 py-0.5 text-[10px] ${urgencyClass(getUrgency(task))}`}>
+                  {urgencyLabel(getUrgency(task))}
                 </span>
-              ) : null}
-              <div className="flex items-center gap-1">
+                {task.dueDate ? (
+                  <span className="text-[11px] text-(--foreground-muted)">
+                    {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1">
+                {task.subTasks.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleSubtasks(task.id)}
+                    className="text-xs p-1 rounded text-(--foreground-muted) hover:text-foreground hover:bg-black/10 dark:hover:bg-white/10"
+                  >
+                    {expandedSubtasksById[task.id] ? `Hide steps (${task.subTasks.length})` : `Show steps (${task.subTasks.length})`}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => handleBreakDown(task.id)}
@@ -297,7 +321,7 @@ export function TaskManagerWidget() {
               </div>
             </div>
             <AnimatePresence>
-              {task.subTasks.length > 0 && (
+              {task.subTasks.length > 0 && expandedSubtasksById[task.id] && (
                 <motion.div
                   className="ml-8 space-y-1 mt-1"
                   initial={{ opacity: 0, height: 0 }}

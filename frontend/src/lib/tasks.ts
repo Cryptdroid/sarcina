@@ -10,9 +10,10 @@ export interface Task {
   completed: boolean;
   subTasks: SubTask[];
   dueDate?: string;
+  dueTime?: string;
 }
 
-export const TASKS_UPDATED_EVENT = "flowstate:tasks-updated";
+export const TASKS_UPDATED_EVENT = "SARCINA:tasks-updated";
 
 import { taskApi, type ApiTask } from "@/lib/backendApi";
 
@@ -32,6 +33,7 @@ function toTask(apiTask: ApiTask): Task {
     completed: apiTask.completed,
     subTasks: Array.isArray(apiTask.subTasks) ? apiTask.subTasks : [],
     dueDate: apiTask.dueDate ?? undefined,
+    dueTime: apiTask.dueTime ?? undefined,
   };
 }
 
@@ -46,18 +48,19 @@ export async function syncTasks(): Promise<Task[]> {
   return taskCache;
 }
 
-export function createTask(text: string, dueDate?: string): Task {
+export function createTask(text: string, dueDate?: string, dueTime?: string): Task {
   return {
     id: crypto.randomUUID(),
     text,
     completed: false,
     subTasks: [],
     dueDate,
+    dueTime,
   };
 }
 
-export async function appendTask(text: string, dueDate?: string): Promise<Task> {
-  const created = await taskApi.create({ text, dueDate });
+export async function appendTask(text: string, dueDate?: string, dueTime?: string): Promise<Task> {
+  const created = await taskApi.create({ text, dueDate, dueTime });
   const normalized = toTask(created);
   taskCache = [...taskCache, normalized];
   notifyTaskListeners();
@@ -74,6 +77,14 @@ export async function updateTask(id: string, patch: Partial<Task>): Promise<Task
 
 export async function removeTask(id: string): Promise<void> {
   await taskApi.remove(id);
-  taskCache = taskCache.filter((task) => task.id !== id);
+
+  try {
+    const latest = await taskApi.list();
+    taskCache = latest.map(toTask);
+  } catch {
+    // Keep local UI responsive even if refresh fails; remove from cache optimistically.
+    taskCache = taskCache.filter((task) => task.id !== id);
+  }
+
   notifyTaskListeners();
 }

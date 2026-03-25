@@ -22,6 +22,7 @@ export interface ApiTask {
   completed: boolean;
   subTasks: ApiSubTask[];
   dueDate?: string | null;
+  dueTime?: string | null;
 }
 
 export interface ApiHabit {
@@ -168,6 +169,7 @@ function toApiTask(raw: Record<string, unknown>, id: string): ApiTask {
     completed: Boolean(raw.completed ?? false),
     subTasks: Array.isArray(raw.subTasks) ? (raw.subTasks as ApiSubTask[]) : [],
     dueDate: typeof raw.dueDate === "string" ? raw.dueDate : null,
+    dueTime: typeof raw.dueTime === "string" ? raw.dueTime : null,
   };
 }
 
@@ -357,7 +359,7 @@ export const taskApi = {
     const docs = await listByCreatedAt("tasks");
     return docs.map((snap) => toApiTask(snap.data() as Record<string, unknown>, snap.id));
   },
-  create: async (payload: { text: string; dueDate?: string }) => {
+  create: async (payload: { text: string; dueDate?: string; dueTime?: string }) => {
     const id = crypto.randomUUID();
     const ref = await userDoc("tasks", id);
     const value: ApiTask & { createdAt: string } = {
@@ -366,6 +368,7 @@ export const taskApi = {
       completed: false,
       subTasks: [],
       dueDate: payload.dueDate ?? null,
+      dueTime: payload.dueTime ?? null,
       createdAt: nowIso(),
     };
     await setDoc(ref, value);
@@ -564,7 +567,15 @@ export const chatApi = {
     return { status: "ok" };
   },
   listMembers: async (groupId: string) => {
-    const snaps = await getDocs(sharedGroupMembersCollection(groupId));
+    const sharedSnaps = await getDocs(sharedGroupMembersCollection(groupId));
+    if (sharedSnaps.docs.length > 0) {
+      return sharedSnaps.docs
+        .sort((a, b) => String(a.data().name ?? "").localeCompare(String(b.data().name ?? "")))
+        .map((snap) => toApiChatMember(snap.data() as Record<string, unknown>, snap.id));
+    }
+
+    const col = await chatGroupMembersCollection(groupId);
+    const snaps = await getDocs(col);
     return snaps.docs
       .sort((a, b) => String(a.data().name ?? "").localeCompare(String(b.data().name ?? "")))
       .map((snap) => toApiChatMember(snap.data() as Record<string, unknown>, snap.id));
@@ -582,8 +593,12 @@ export const chatApi = {
       if (match) {
         id = match.uid;
         normalizedEmail = match.email || normalizedEmail;
+        const sharedGroup = await getDoc(sharedGroupDoc(groupId));
+        const sharedGroupName = sharedGroup.exists()
+          ? String((sharedGroup.data() as Record<string, unknown>).name ?? "Shared Group")
+          : "Shared Group";
         const userGroupRef = await chatGroupDocForUser(match.uid, groupId);
-        await setDoc(userGroupRef, { id: groupId, name: "Shared Group", createdAt: nowIso() }, { merge: true });
+        await setDoc(userGroupRef, { id: groupId, name: sharedGroupName, createdAt: nowIso() }, { merge: true });
       }
     }
 

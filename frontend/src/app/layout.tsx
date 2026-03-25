@@ -21,7 +21,7 @@ const bodyFont = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "FlowState - Productivity Reimagined",
+  title: "SARCINA - Productivity Reimagined",
   description: "A smart task manager, focus timer, and daily planner with an ambient dark design.",
 };
 

@@ -6,6 +6,7 @@ export interface DayScoreInput {
   focusMinutes: number;
   focusSessions?: number;
   habitStreakAverage?: number;
+  energyLevel?: "Low" | "Medium" | "High";
 }
 
 export interface DayScoreBreakdown {
@@ -27,6 +28,12 @@ const WEIGHTS = {
   momentum: 6,
 } as const;
 
+const TASK_ENERGY_MULTIPLIER = {
+  Low: 1.3,
+  Medium: 1,
+  High: 0.8,
+} as const;
+
 const FOCUS_TARGET_MINUTES = 120;
 
 function clamp(value: number, min = 0, max = 1): number {
@@ -34,6 +41,7 @@ function clamp(value: number, min = 0, max = 1): number {
 }
 
 export function calculateDayScore(input: DayScoreInput): DayScoreResult {
+  const energyLevel = input.energyLevel ?? "Medium";
   const taskRatio = input.tasksTotal > 0 ? input.tasksCompleted / input.tasksTotal : 0;
   const habitRatio = input.habitsTotal > 0 ? input.habitsCompleted / input.habitsTotal : 0;
   const sessionRatio = clamp((input.focusSessions ?? 0) / 4);
@@ -44,9 +52,12 @@ export function calculateDayScore(input: DayScoreInput): DayScoreResult {
   const boostedTaskRatio = clamp(taskRatio * 0.9 + (taskRatio >= 0.6 ? 0.1 : 0));
   const boostedHabitRatio = clamp(habitRatio * 0.85 + streakRatio * 0.15);
   const balancedRatio = Math.min(boostedTaskRatio, boostedHabitRatio, focusRatio);
+  const effectiveTaskWeight = Math.round(
+    WEIGHTS.tasks * TASK_ENERGY_MULTIPLIER[energyLevel]
+  );
 
   const breakdown: DayScoreBreakdown = {
-    tasks: Math.round(boostedTaskRatio * WEIGHTS.tasks),
+    tasks: Math.round(boostedTaskRatio * effectiveTaskWeight),
     habits: Math.round(boostedHabitRatio * WEIGHTS.habits),
     focus: Math.round(focusRatio * WEIGHTS.focus),
     momentum: Math.round(balancedRatio * WEIGHTS.momentum),

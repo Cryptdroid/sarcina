@@ -20,7 +20,7 @@ export const Logo = () => {
         animate={{ opacity: 1 }}
         className="font-heading font-bold text-lg text-foreground whitespace-pre"
       >
-        FlowState
+        SARCINA
       </motion.span>
     </Link>
   );

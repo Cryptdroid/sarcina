@@ -9,7 +9,7 @@ from api.routes.notes import router as notes_router
 from api.routes.task_agent import router as task_agent_router
 from api.routes.tasks import router as tasks_router
 
-app = FastAPI(title="FlowState Backend AI", version="0.1.0")
+app = FastAPI(title="SARCINA Backend AI", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,

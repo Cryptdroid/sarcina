@@ -6,7 +6,7 @@ export function DashboardHeader({ onOpenNewTask }: DashboardHeaderProps) {
   return (
     <header className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-5">
       <div className="animate-fade-in-up space-y-2">
-        <p className="text-xs uppercase tracking-[0.22em] text-(--foreground-muted)">FlowState Workspace</p>
+        <p className="text-xs uppercase tracking-[0.22em] text-(--foreground-muted)">SARCINA Workspace</p>
         <h2 className="text-3xl md:text-4xl font-semibold font-heading text-foreground tracking-tight">Your day, designed for deep work.</h2>
         <p className="text-(--foreground-muted) text-sm md:text-base max-w-2xl">
           Plan intentionally, execute in focused blocks, and keep your priorities visible across tasks, habits, and team updates.

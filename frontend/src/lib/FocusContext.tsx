@@ -120,10 +120,10 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     if ("Notification" in window) {
       const message = mode === "work" ? "Work session done! Time for a break." : "Break over! Back to work.";
       if (Notification.permission === "granted") {
-        new Notification("FlowState", { body: message, icon: "/favicon.ico" });
+        new Notification("SARCINA", { body: message, icon: "/favicon.ico" });
       } else if (Notification.permission !== "denied") {
         Notification.requestPermission().then((perm) => {
-          if (perm === "granted") new Notification("FlowState", { body: message });
+          if (perm === "granted") new Notification("SARCINA", { body: message });
         });
       }
     }

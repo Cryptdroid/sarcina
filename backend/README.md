@@ -1,4 +1,4 @@
-# FlowState Backend
+# SARCINA Backend
 
 ## Run backend AI service
 

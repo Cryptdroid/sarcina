@@ -114,7 +114,7 @@ export function PlannerWidget() {
   }, [tasks]);
 
   return (
-    <section className="glass-card flex-1 min-h-87.5 p-6 flex flex-col relative group">
+    <section className="glass-card min-h-87.5 p-6 flex flex-col relative group">
       <h3 className="text-lg font-heading font-bold mb-4 flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-electric-blue shadow-[0_0_10px_var(--accent-electric-blue)]"></span>
         Calendar Planner
@@ -169,7 +169,7 @@ export function PlannerWidget() {
           <p className="text-foreground font-medium mb-2">Planned for {hoveredDate}</p>
           <div className="space-y-1.5 text-foreground">
             {dueDateTasks[hoveredDate].map((task) => (
-              <p key={task.id} className="truncate">• {task.text}</p>
+              <p key={task.id} className="truncate">• {task.text}{task.dueTime ? ` (${task.dueTime})` : ""}</p>
             ))}
           </div>
         </div>
@@ -203,7 +203,9 @@ export function PlannerWidget() {
           upcomingTasks.map((task) => (
             <div key={task.id} className="rounded-lg border border-(--glass-border) bg-black/5 dark:bg-white/6 px-3 py-2">
               <p className="text-foreground">{task.text}</p>
-              <p className="text-(--foreground-muted) text-xs mt-1">{task.dueDate}</p>
+              <p className="text-(--foreground-muted) text-xs mt-1">
+                {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
+              </p>
             </div>
           ))
         )}

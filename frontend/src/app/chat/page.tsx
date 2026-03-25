@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { firestoreDb } from "@/lib/firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 
-const ACTIVE_GROUP_STORAGE_KEY = "flowstate:teamhub:active-group";
+const ACTIVE_GROUP_STORAGE_KEY = "SARCINA:teamhub:active-group";
 
 type SharedTask = {
   id: string;
@@ -287,7 +287,13 @@ export default function TeamChat() {
     const messagesRef = collection(firestoreDb, "teamGroups", activeGroupId, "messages");
     const tasksRef = collection(firestoreDb, "teamGroups", activeGroupId, "tasks");
 
-    const unsubMembers = onSnapshot(membersRef, (snapshot) => {
+    const unsubMembers = onSnapshot(membersRef, async (snapshot) => {
+      if (snapshot.docs.length === 0) {
+        const fallback = await chatApi.listMembers(activeGroupId);
+        setMembers(fallback);
+        return;
+      }
+
       const nextMembers = snapshot.docs
         .map((docSnap) => {
           const raw = docSnap.data() as Record<string, unknown>;
@@ -302,7 +308,13 @@ export default function TeamChat() {
       setMembers(nextMembers);
     });
 
-    const unsubMessages = onSnapshot(messagesRef, (snapshot) => {
+    const unsubMessages = onSnapshot(messagesRef, async (snapshot) => {
+      if (snapshot.docs.length === 0) {
+        const fallback = await chatApi.listMessages(activeGroupId);
+        setMessages(fallback.map(toChatMessage));
+        return;
+      }
+
       const nextMessages = snapshot.docs
         .map((docSnap) => {
           const raw = docSnap.data() as Record<string, unknown>;
@@ -317,7 +329,13 @@ export default function TeamChat() {
       setMessages(nextMessages);
     });
 
-    const unsubTasks = onSnapshot(tasksRef, (snapshot) => {
+    const unsubTasks = onSnapshot(tasksRef, async (snapshot) => {
+      if (snapshot.docs.length === 0) {
+        const fallback = await chatApi.listTasks(activeGroupId);
+        setSharedTasks(fallback.map(toSharedTask));
+        return;
+      }
+
       const nextTasks = snapshot.docs
         .map((docSnap) => {
           const raw = docSnap.data() as Record<string, unknown>;
@@ -327,6 +345,11 @@ export default function TeamChat() {
             completed: Boolean(raw.completed ?? false),
             tag: String(raw.tag ?? "General"),
             assignee: typeof raw.assignee === "string" ? raw.assignee : undefined,
+            priority:
+              raw.priority === "Low" || raw.priority === "Medium" || raw.priority === "High"
+                ? raw.priority
+                : undefined,
+            dueDate: typeof raw.dueDate === "string" ? raw.dueDate : undefined,
           } as SharedTask;
         })
         .sort((a, b) => a.text.localeCompare(b.text));

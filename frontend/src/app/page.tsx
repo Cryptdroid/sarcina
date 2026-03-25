@@ -17,6 +17,7 @@ import TeamChat from './chat/page';
 
 type UiMode = 'Focus' | 'Chill' | 'Planning';
 type AppView = 'dashboard' | 'tasks' | 'planner' | 'focus' | 'habits' | 'chat';
+type EnergyLevel = 'Low' | 'Medium' | 'High';
 
 function ViewShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
@@ -33,6 +34,7 @@ function ViewShell({ title, subtitle, children }: { title: string; subtitle: str
 export default function Home() {
   const searchParams = useSearchParams();
   const [uiMode, setUiMode] = useState<UiMode>('Focus');
+  const [energyLevel, setEnergyLevel] = useState<EnergyLevel>('Medium');
   const [timerActive, setTimerActive] = useState(false);
   const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false);
   const viewParam = searchParams.get('view');
@@ -105,10 +107,14 @@ export default function Home() {
             <div className={`${rightColSpan} flex flex-col gap-6`}>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 xl:col-span-1">
-                  <MoodSelector setUiMode={setUiMode} />
+                  <MoodSelector
+                    mood={energyLevel}
+                    setUiMode={setUiMode}
+                    onMoodChange={setEnergyLevel}
+                  />
                 </div>
                 <div className="col-span-2 xl:col-span-1 h-full">
-                  <DayScore />
+                  <DayScore energyLevel={energyLevel} />
                 </div>
               </div>
 

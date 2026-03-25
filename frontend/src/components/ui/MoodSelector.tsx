@@ -1,19 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-
 type Mood = 'Low' | 'Medium' | 'High';
 type UiMode = 'Focus' | 'Chill' | 'Planning';
 
 interface MoodSelectorProps {
+  mood: Mood;
   setUiMode: (mode: UiMode) => void;
+  onMoodChange: (mood: Mood) => void;
 }
 
-export function MoodSelector({ setUiMode }: MoodSelectorProps) {
-  const [mood, setMood] = useState<Mood>('Medium');
-
+export function MoodSelector({ mood, setUiMode, onMoodChange }: MoodSelectorProps) {
   const handleMoodChange = (newMood: Mood) => {
-    setMood(newMood);
+    onMoodChange(newMood);
     if (newMood === 'High') setUiMode('Focus');
     else if (newMood === 'Medium') setUiMode('Planning');
     else setUiMode('Chill');

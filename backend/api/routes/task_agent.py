@@ -18,6 +18,7 @@ class TaskAgentRequest(BaseModel):
 class PlannedTask(BaseModel):
     title: str
     due_date: date
+    due_time: str | None = None
 
 
 class TaskAgentResponse(BaseModel):
@@ -50,19 +51,44 @@ class OrchestrateRequest(BaseModel):
 @router.post("/new-task", response_model=TaskAgentResponse)
 def create_task_from_prompt(payload: TaskAgentRequest) -> TaskAgentResponse:
     planned_items = planner_model.plan_tasks(payload.prompt, payload.preferred_date)
-    serialized = [PlannedTask(title=item.title, due_date=item.due_date) for item in planned_items]
+    used_gemini = False
+    gemini_error: str | None = None
+
+    if planner_model.should_use_gemini_fallback(payload.prompt, planned_items):
+        gemini_plan, gemini_error = planner_model.plan_tasks_with_gemini(
+            payload.prompt,
+            payload.preferred_date,
+        )
+        if gemini_plan:
+            planned_items = gemini_plan
+            used_gemini = True
+
+    serialized = [
+        PlannedTask(title=item.title, due_date=item.due_date, due_time=item.due_time)
+        for item in planned_items
+    ]
     first = serialized[0]
 
     if len(serialized) == 1:
+        time_hint = f" at {first.due_time}" if first.due_time else ""
+        source_hint = " Parsed with Gemini fallback for complex prompt." if used_gemini else ""
+        fallback_hint = "" if used_gemini or not gemini_error else " Used local planner because Gemini fallback was unavailable."
         reply = (
-            f"Planned task '{first.title}' for {first.due_date.isoformat()}. "
-            f"{planned_items[0].reasoning}"
+            f"Planned task '{first.title}' for {first.due_date.isoformat()}{time_hint}. "
+            f"{planned_items[0].reasoning}{source_hint}{fallback_hint}"
         )
     else:
-        summary = ", ".join([f"'{task.title}' on {task.due_date.isoformat()}" for task in serialized[:4]])
+        summary = ", ".join(
+            [
+                f"'{task.title}' on {task.due_date.isoformat()}{f' at {task.due_time}' if task.due_time else ''}"
+                for task in serialized[:4]
+            ]
+        )
         if len(serialized) > 4:
             summary = f"{summary}, and {len(serialized) - 4} more"
-        reply = f"Planned {len(serialized)} tasks: {summary}."
+        source_hint = " Parsed with Gemini fallback for complex prompt." if used_gemini else ""
+        fallback_hint = "" if used_gemini or not gemini_error else " Used local planner because Gemini fallback was unavailable."
+        reply = f"Planned {len(serialized)} tasks: {summary}.{source_hint}{fallback_hint}"
 
     return TaskAgentResponse(
         reply=reply,

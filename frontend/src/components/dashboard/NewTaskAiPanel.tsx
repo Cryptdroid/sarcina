@@ -17,10 +17,12 @@ interface AiTaskResponse {
   task?: {
     title: string;
     due_date?: string;
+    due_time?: string;
   };
   tasks?: Array<{
     title: string;
     due_date?: string;
+    due_time?: string;
   }>;
 }
 
@@ -267,7 +269,7 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
         const writes = await Promise.allSettled(
           plannedTasks.map((planned) =>
             withTimeout(
-              appendTask(planned.title, planned.due_date ?? selectedDate),
+              appendTask(planned.title, planned.due_date ?? selectedDate, planned.due_time),
               8000,
               "Task write"
             )
@@ -399,7 +401,9 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
                     <p className="text-[11px] text-emerald-300/90 mb-1">Planned for {hoveredDate}</p>
                     <div className="space-y-1">
                       {dueDateTasks[hoveredDate].slice(0, 4).map((task) => (
-                        <p key={task.id} className="text-[11px] text-white/85 truncate">• {task.text}</p>
+                        <p key={task.id} className="text-[11px] text-white/85 truncate">
+                          • {task.text}{task.dueTime ? ` (${task.dueTime})` : ""}
+                        </p>
                       ))}
                     </div>
                   </div>
