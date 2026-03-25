@@ -318,6 +318,53 @@ export default function TeamChat() {
     }
   };
 
+  const inviteByEmail = async () => {
+    if (!activeGroupId || !activeGroup) {
+      return;
+    }
+
+    const email = inviteQuery.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      setError("Enter a valid email to invite.");
+      return;
+    }
+
+    setInviteActionLoadingId(email);
+    try {
+      setError(null);
+      const target = await profileApi.resolveUserByEmail(email);
+      if (!target) {
+        setError("No user found with this email. Ask them to log in once so they appear in directory.");
+        return;
+      }
+
+      const alreadyMember = members.some(
+        (member) =>
+          (target.email && member.email && member.email.toLowerCase() === target.email.toLowerCase()) ||
+          member.name.toLowerCase() === target.name.toLowerCase()
+      );
+      if (alreadyMember) {
+        setError(`${target.name} is already in this group.`);
+        return;
+      }
+
+      await inviteApi.send({
+        groupId: activeGroupId,
+        groupName: activeGroup.name,
+        targetUserId: target.uid,
+        targetName: target.name,
+        targetEmail: target.email,
+      });
+      setInviteQuery("");
+      setInviteResults([]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not send email invite.";
+      setError(message);
+    } finally {
+      setInviteActionLoadingId(null);
+    }
+  };
+
   const sendInvite = async (target: ApiUserDirectoryEntry) => {
     if (!activeGroupId || !activeGroup) {
       return;
@@ -633,6 +680,14 @@ export default function TeamChat() {
                   className="rounded-lg bg-white/10 px-3 py-2 text-xs hover:bg-white/20"
                 >
                   Search
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void inviteByEmail()}
+                  disabled={!activeGroupId || inviteActionLoadingId === inviteQuery.trim().toLowerCase()}
+                  className="rounded-lg bg-electric-blue/20 text-electric-blue px-3 py-2 text-xs hover:bg-electric-blue/30 disabled:opacity-60"
+                >
+                  Invite Email
                 </button>
               </div>
 

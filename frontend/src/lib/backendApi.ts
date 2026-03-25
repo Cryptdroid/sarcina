@@ -69,6 +69,7 @@ export interface ApiUserDirectoryEntry {
   uid: string;
   name: string;
   email?: string;
+  emailLower?: string;
   photoURL?: string;
 }
 
@@ -218,6 +219,7 @@ function toApiUserDirectoryEntry(raw: Record<string, unknown>, uid: string): Api
     uid,
     name: String(raw.name ?? "User"),
     email: typeof raw.email === "string" ? raw.email : undefined,
+    emailLower: typeof raw.emailLower === "string" ? raw.emailLower : undefined,
     photoURL: typeof raw.photoURL === "string" ? raw.photoURL : undefined,
   };
 }
@@ -398,12 +400,14 @@ export const profileApi = {
   upsertCurrentUserProfile: async () => {
     const user = await getAuthedUser();
     const ref = directoryDoc(user.uid);
+    const normalizedEmail = user.email ? user.email.trim().toLowerCase() : null;
     await setDoc(
       ref,
       {
         uid: user.uid,
         name: user.displayName || user.email || "User",
         email: user.email || null,
+        emailLower: normalizedEmail,
         photoURL: user.photoURL || null,
         updatedAt: nowIso(),
       },
@@ -430,6 +434,26 @@ export const profileApi = {
       .slice(0, 8);
 
     return matches;
+  },
+  resolveUserByEmail: async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      return null as ApiUserDirectoryEntry | null;
+    }
+
+    const currentUser = await getAuthedUser();
+    const snaps = await getDocs(collection(firestoreDb, "userDirectory"));
+    const entry = snaps.docs
+      .map((snap) => toApiUserDirectoryEntry(snap.data() as Record<string, unknown>, snap.id))
+      .find((candidate) => {
+        if (candidate.uid === currentUser.uid) {
+          return false;
+        }
+        const candidateEmail = (candidate.emailLower || candidate.email || "").trim().toLowerCase();
+        return candidateEmail === normalizedEmail;
+      });
+
+    return entry ?? null;
   },
 };
 
@@ -636,6 +660,20 @@ export const inviteApi = {
         name: invite.fromName,
         email: invite.fromEmail || null,
         role: "owner",
+      },
+      { merge: true }
+    );
+
+    // Mirror membership on inviter side so they can see accepted members in their group list.
+    const acceptedMemberRefOnInviter = await chatGroupMemberDocForUser(invite.fromUserId, invite.groupId, user.uid);
+    await setDoc(
+      acceptedMemberRefOnInviter,
+      {
+        id: user.uid,
+        name: user.displayName || user.email || "Member",
+        email: user.email || null,
+        role: "member",
+        acceptedAt: nowIso(),
       },
       { merge: true }
     );

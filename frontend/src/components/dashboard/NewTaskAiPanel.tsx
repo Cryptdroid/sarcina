@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { TASKS_UPDATED_EVENT, appendTask, getInitialTasks, syncTasks, type Task } from "@/lib/tasks";
+import { TASKS_UPDATED_EVENT, appendTask, getInitialTasks, removeTask, syncTasks, type Task } from "@/lib/tasks";
 
 type Role = "user" | "assistant";
 
@@ -62,6 +62,45 @@ function monthCells(cursor: Date): Date[] {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
     return d;
+  });
+}
+
+function normalizeText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function isDeleteIntent(prompt: string): boolean {
+  return /\b(delete|remove|cancel|drop|clear)\b/i.test(prompt);
+}
+
+function findTasksToDelete(prompt: string, tasks: Task[]): Task[] {
+  const normalizedPrompt = normalizeText(prompt);
+  if (!normalizedPrompt) {
+    return [];
+  }
+
+  if (/\ball\s+completed\b/.test(normalizedPrompt)) {
+    return tasks.filter((task) => task.completed);
+  }
+
+  if (/\ball\s+tasks\b/.test(normalizedPrompt)) {
+    return tasks;
+  }
+
+  const stripped = normalizedPrompt
+    .replace(/\b(delete|remove|cancel|drop|clear)\b/g, " ")
+    .replace(/\b(task|tasks|for|the|a|an|please|my)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const queryTokens = stripped.split(" ").filter((token) => token.length > 1);
+  if (queryTokens.length === 0) {
+    return [];
+  }
+
+  return tasks.filter((task) => {
+    const name = normalizeText(task.text);
+    return queryTokens.every((token) => name.includes(token));
   });
 }
 
@@ -137,6 +176,55 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
     setMessages((prev) => [...prev, userMsg]);
     setPrompt("");
     setLoading(true);
+
+    if (isDeleteIntent(trimmed)) {
+      try {
+        const targets = findTasksToDelete(trimmed, tasks);
+        if (targets.length === 0) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: "I could not find matching tasks to delete. Try using exact keywords from the task title.",
+            },
+          ]);
+          return;
+        }
+
+        const results = await Promise.allSettled(targets.map((task) => withTimeout(removeTask(task.id), 8000, "Task delete")));
+        const successCount = results.filter((item) => item.status === "fulfilled").length;
+        const failed = results.length - successCount;
+
+        const latest = await withTimeout(syncTasks(), 8000, "Task sync");
+        setTasks(latest);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content:
+              failed > 0
+                ? `Deleted ${successCount} task${successCount !== 1 ? "s" : ""}, but ${failed} delete${failed !== 1 ? "s" : ""} failed.`
+                : `Deleted ${successCount} task${successCount !== 1 ? "s" : ""}.`,
+          },
+        ]);
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "I could not delete tasks right now. Please try again.",
+          },
+        ]);
+      } finally {
+        setLoading(false);
+      }
+
+      return;
+    }
 
     try {
       const controller = new AbortController();
@@ -256,7 +344,7 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-y-auto pr-1">
               <section className="rounded-xl border border-white/10 bg-white/3 p-3">
                 <div className="flex items-center justify-between mb-2">
                   <button
@@ -318,9 +406,9 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
                 ) : null}
               </section>
 
-              <section className="rounded-xl border border-white/10 bg-white/3 p-3 flex flex-col">
+              <section className="rounded-xl border border-white/10 bg-white/3 p-3 flex flex-col flex-1 min-h-72">
                 <p className="text-xs uppercase tracking-wide text-white/45 mb-2">Agent Chat</p>
-                <div className="flex-1 min-h-40 max-h-56 overflow-y-auto space-y-2 pr-1">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
                   {messages.map((m) => (
                     <div
                       key={m.id}
@@ -333,12 +421,12 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
               </section>
             </div>
 
-            <div className="mt-auto space-y-2">
+            <div className="mt-4 pt-3 border-t border-white/10 bg-slate-950/95 shrink-0 space-y-2">
               <label className="text-xs text-white/50">Prompt AI to create task</label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Example: Create a task to submit design review next Friday"
+                placeholder="Example: Create a task for Friday or delete task submit report"
                 className="w-full rounded-xl min-h-24 border border-white/10 bg-white/4 p-3 text-sm text-foreground placeholder:text-white/35 focus:outline-none focus:border-electric-blue"
               />
               <div className="flex items-center justify-between">
