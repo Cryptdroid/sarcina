@@ -24,6 +24,8 @@ type SharedTask = {
   completed: boolean;
   tag: string;
   assignee?: string;
+  priority?: "Low" | "Medium" | "High";
+  dueDate?: string;
 };
 
 type ChatMessage = {
@@ -49,6 +51,8 @@ function toSharedTask(task: ApiChatTask): SharedTask {
     completed: task.completed,
     tag: task.tag,
     assignee: task.assignee,
+    priority: task.priority,
+    dueDate: task.dueDate,
   };
 }
 
@@ -81,6 +85,8 @@ export default function TeamChat() {
   const [newTaskText, setNewTaskText] = useState("");
   const [newTaskTag, setNewTaskTag] = useState("General");
   const [newTaskAssignee, setNewTaskAssignee] = useState("Unassigned");
+  const [newTaskPriority, setNewTaskPriority] = useState<"Low" | "Medium" | "High">("Medium");
+  const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loadingGroups, setLoadingGroups] = useState(true);
@@ -577,6 +583,8 @@ export default function TeamChat() {
       completed: false,
       tag: newTaskTag.trim() || "General",
       assignee: newTaskAssignee === "Unassigned" ? undefined : newTaskAssignee,
+      priority: newTaskPriority,
+      dueDate: newTaskDueDate || undefined,
     };
 
     setSharedTasks((prev) => [...prev, optimistic]);
@@ -588,8 +596,12 @@ export default function TeamChat() {
         text: optimistic.text,
         tag: optimistic.tag,
         assignee: optimistic.assignee,
+        priority: optimistic.priority,
+        dueDate: optimistic.dueDate,
       });
       setSharedTasks((prev) => prev.map((task) => (task.id === optimistic.id ? toSharedTask(created) : task)));
+      setNewTaskDueDate("");
+      setNewTaskPriority("Medium");
       await loadActiveGroupData(activeGroupId);
     } catch (error) {
       setSharedTasks((prev) => prev.filter((task) => task.id !== optimistic.id));
@@ -639,6 +651,24 @@ export default function TeamChat() {
     } catch (error) {
       setSharedTasks(snapshot);
       const message = error instanceof Error ? error.message : "Could not assign task.";
+      setError(message);
+    }
+  };
+
+  const deleteTask = async (taskId: string) => {
+    if (!activeGroupId) {
+      return;
+    }
+
+    const snapshot = sharedTasks;
+    setSharedTasks((prev) => prev.filter((task) => task.id !== taskId));
+
+    try {
+      setError(null);
+      await chatApi.removeTask(activeGroupId, taskId);
+    } catch (error) {
+      setSharedTasks(snapshot);
+      const message = error instanceof Error ? error.message : "Could not delete task.";
       setError(message);
     }
   };
@@ -943,6 +973,23 @@ export default function TeamChat() {
                   ))}
                 </select>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={newTaskPriority}
+                  onChange={(event) => setNewTaskPriority(event.target.value as "Low" | "Medium" | "High")}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs"
+                >
+                  <option value="Low">Low priority</option>
+                  <option value="Medium">Medium priority</option>
+                  <option value="High">High priority</option>
+                </select>
+                <input
+                  type="date"
+                  value={newTaskDueDate}
+                  onChange={(event) => setNewTaskDueDate(event.target.value)}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs"
+                />
+              </div>
             </div>
             <button
               type="button"
@@ -970,6 +1017,10 @@ export default function TeamChat() {
                       <p className={`text-sm ${task.completed ? "line-through text-white/50" : "text-foreground"}`}>{task.text}</p>
                       <div className="mt-2 flex items-center gap-2">
                         <span className="text-[10px] rounded bg-electric-blue/20 px-2 py-0.5 text-electric-blue">{task.tag}</span>
+                        <span className={`text-[10px] rounded px-2 py-0.5 ${task.priority === "High" ? "bg-rose-500/20 text-rose-300" : task.priority === "Low" ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-200"}`}>
+                          {task.priority ?? "Medium"}
+                        </span>
+                        {task.dueDate ? <span className="text-[10px] rounded bg-white/10 px-2 py-0.5 text-(--foreground-muted)">{task.dueDate}</span> : null}
                         <select
                           value={task.assignee ?? "Unassigned"}
                           onChange={(event) => void assignTask(task.id, event.target.value)}
@@ -982,6 +1033,13 @@ export default function TeamChat() {
                             </option>
                           ))}
                         </select>
+                        <button
+                          type="button"
+                          onClick={() => void deleteTask(task.id)}
+                          className="text-[10px] rounded border border-rose-300/30 px-2 py-0.5 text-rose-300 hover:bg-rose-300/10"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   </div>

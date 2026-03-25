@@ -50,6 +50,8 @@ export interface ApiChatTask {
   completed: boolean;
   tag: string;
   assignee?: string;
+  priority?: "Low" | "Medium" | "High";
+  dueDate?: string;
 }
 
 export interface ApiChatGroup {
@@ -194,7 +196,19 @@ function toApiChatTask(raw: Record<string, unknown>, id: string): ApiChatTask {
     completed: Boolean(raw.completed ?? false),
     tag: String(raw.tag ?? "General"),
     assignee: typeof raw.assignee === "string" ? raw.assignee : undefined,
+    priority:
+      raw.priority === "Low" || raw.priority === "Medium" || raw.priority === "High"
+        ? raw.priority
+        : undefined,
+    dueDate: typeof raw.dueDate === "string" ? raw.dueDate : undefined,
   };
+}
+
+function stripUndefined<T extends Record<string, unknown>>(value: T): T {
+  const next = Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  ) as T;
+  return next;
 }
 
 function toApiChatGroup(raw: Record<string, unknown>, id: string): ApiChatGroup {
@@ -574,14 +588,14 @@ export const chatApi = {
     }
 
     const ref = sharedGroupMemberDoc(groupId, id);
-    const value: ApiChatMember = {
+    const value = stripUndefined({
       id,
       name: payload.name,
       email: normalizedEmail,
       role: payload.role ?? "member",
-    };
+    });
     await setDoc(ref, value, { merge: true });
-    return value;
+    return value as ApiChatMember;
   },
   removeMember: async (groupId: string, memberId: string) => {
     await deleteDoc(sharedGroupMemberDoc(groupId, memberId));
@@ -644,23 +658,25 @@ export const chatApi = {
     });
     return docs.map((snap) => toApiChatTask(snap.data() as Record<string, unknown>, snap.id));
   },
-  createTask: async (groupId: string, payload: { text: string; tag?: string; assignee?: string }) => {
+  createTask: async (groupId: string, payload: { text: string; tag?: string; assignee?: string; priority?: "Low" | "Medium" | "High"; dueDate?: string }) => {
     const id = crypto.randomUUID();
     const ref = sharedGroupTaskDoc(groupId, id);
-    const value: ApiChatTask & { createdAt: string } = {
+    const value = stripUndefined({
       id,
       text: payload.text,
       completed: false,
       tag: payload.tag ?? "General",
       assignee: payload.assignee,
+      priority: payload.priority,
+      dueDate: payload.dueDate,
       createdAt: nowIso(),
-    };
+    });
     await setDoc(ref, value);
-    return value;
+    return value as ApiChatTask & { createdAt: string };
   },
   patchTask: async (groupId: string, id: string, payload: Partial<ApiChatTask>) => {
     const ref = sharedGroupTaskDoc(groupId, id);
-    await updateDoc(ref, { ...payload, updatedAt: nowIso() });
+    await updateDoc(ref, stripUndefined({ ...payload, updatedAt: nowIso() }));
     const next = await getDoc(ref);
     return toApiChatTask(next.data() as Record<string, unknown>, id);
   },
