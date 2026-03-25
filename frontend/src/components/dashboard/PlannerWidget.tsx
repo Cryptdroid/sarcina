@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { TASKS_UPDATED_EVENT, type Task, getInitialTasks, syncTasks } from "@/lib/tasks";
 
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function formatMonth(date: Date): string {
   return date.toLocaleString("en-US", { month: "long", year: "numeric" });
 }
@@ -19,6 +21,11 @@ function getMonthGrid(date: Date): Date[] {
     cell.setDate(startDate.getDate() + idx);
     return cell;
   });
+}
+
+function toLocalIsoDate(value: Date): string {
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
 }
 
 export function PlannerWidget() {
@@ -75,6 +82,37 @@ export function PlannerWidget() {
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
     .slice(0, 4);
 
+  const weekSignal = useMemo(() => {
+    const load = [0, 0, 0, 0, 0, 0, 0];
+    let scheduled = 0;
+    let completedScheduled = 0;
+
+    for (const task of tasks) {
+      if (!task.dueDate) {
+        continue;
+      }
+      const date = new Date(`${task.dueDate}T00:00:00`);
+      if (Number.isNaN(date.getTime())) {
+        continue;
+      }
+      const weekday = date.getDay();
+      load[weekday] += 1;
+      scheduled += 1;
+      if (task.completed) {
+        completedScheduled += 1;
+      }
+    }
+
+    const peak = Math.max(...load, 0);
+    const peakIndex = load.findIndex((value) => value === peak);
+    return {
+      load,
+      peak,
+      peakDay: peak > 0 && peakIndex >= 0 ? WEEKDAY_SHORT[peakIndex] : "None",
+      completion: scheduled > 0 ? Math.round((completedScheduled / scheduled) * 100) : 0,
+    };
+  }, [tasks]);
+
   return (
     <section className="glass-card flex-1 min-h-87.5 p-6 flex flex-col relative group">
       <h3 className="text-lg font-heading font-bold mb-4 flex items-center gap-2">
@@ -108,7 +146,7 @@ export function PlannerWidget() {
 
       <div className="grid grid-cols-7 gap-1 rounded-xl border border-(--glass-border) p-2 bg-black/4 dark:bg-white/3">
         {monthGrid.map((date) => {
-          const key = date.toISOString().slice(0, 10);
+          const key = toLocalIsoDate(date);
           const inMonth = date.getMonth() === monthIndex;
           const hasTasks = Boolean(dueDateMap[key]);
 
@@ -136,6 +174,26 @@ export function PlannerWidget() {
           </div>
         </div>
       ) : null}
+
+      <div className="mt-3 rounded-xl border border-(--glass-border) bg-black/5 dark:bg-white/6 p-3">
+        <div className="flex items-center justify-between text-[11px] text-(--foreground-muted) mb-2">
+          <p className="uppercase tracking-[0.18em]">Week Signal</p>
+          <p className="text-foreground/85">Peak: {weekSignal.peakDay} • Completion: {weekSignal.completion}%</p>
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {WEEKDAY_SHORT.map((day, idx) => {
+            const count = weekSignal.load[idx];
+            const intensity = weekSignal.peak > 0 ? Math.max(0.2, count / weekSignal.peak) : 0.08;
+            return (
+              <div key={day} className="rounded-lg border border-(--glass-border) p-2 text-center">
+                <p className="text-[10px] text-(--foreground-muted)">{day}</p>
+                <div className="mt-1 h-6 rounded-md" style={{ backgroundColor: `rgba(72,143,255,${intensity})` }} />
+                <p className="mt-1 text-[11px] text-foreground">{count}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="mt-4 space-y-2 text-sm text-foreground">
         <p className="text-xs uppercase tracking-wider text-(--foreground-muted)">Upcoming Scheduled Tasks</p>

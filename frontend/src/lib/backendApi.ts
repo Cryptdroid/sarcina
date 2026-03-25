@@ -290,6 +290,34 @@ async function chatGroupTaskDoc(groupId: string, taskId: string) {
   return doc(firestoreDb, "users", user.uid, "chatGroups", groupId, "tasks", taskId);
 }
 
+function sharedGroupDoc(groupId: string) {
+  return doc(firestoreDb, "teamGroups", groupId);
+}
+
+function sharedGroupMembersCollection(groupId: string) {
+  return collection(firestoreDb, "teamGroups", groupId, "members");
+}
+
+function sharedGroupMemberDoc(groupId: string, memberId: string) {
+  return doc(firestoreDb, "teamGroups", groupId, "members", memberId);
+}
+
+function sharedGroupMessagesCollection(groupId: string) {
+  return collection(firestoreDb, "teamGroups", groupId, "messages");
+}
+
+function sharedGroupMessageDoc(groupId: string, messageId: string) {
+  return doc(firestoreDb, "teamGroups", groupId, "messages", messageId);
+}
+
+function sharedGroupTasksCollection(groupId: string) {
+  return collection(firestoreDb, "teamGroups", groupId, "tasks");
+}
+
+function sharedGroupTaskDoc(groupId: string, taskId: string) {
+  return doc(firestoreDb, "teamGroups", groupId, "tasks", taskId);
+}
+
 function directoryDoc(uid: string) {
   return doc(firestoreDb, "userDirectory", uid);
 }
@@ -469,61 +497,110 @@ export const chatApi = {
     return docs.map((snap) => toApiChatGroup(snap.data() as Record<string, unknown>, snap.id));
   },
   createGroup: async (payload: { name: string }) => {
+    const user = await getAuthedUser();
     const id = crypto.randomUUID();
-    const ref = await chatGroupDoc(id);
     const value: ApiChatGroup = {
       id,
       name: payload.name,
       createdAt: nowIso(),
     };
-    await setDoc(ref, value);
-    return value;
-  },
-  removeGroup: async (groupId: string) => {
-    const [members, messages, tasks] = await Promise.all([
-      chatApi.listMembers(groupId),
-      chatApi.listMessages(groupId),
-      chatApi.listTasks(groupId),
+
+    const [indexRef, ownerMemberRef] = await Promise.all([
+      chatGroupDoc(id),
+      Promise.resolve(sharedGroupMemberDoc(id, user.uid)),
     ]);
 
     await Promise.all([
-      ...members.map((member) => chatApi.removeMember(groupId, member.id)),
-      ...messages.map(async (message) => {
-        const messageRef = await chatGroupMessageDoc(groupId, message.id);
-        await deleteDoc(messageRef);
-      }),
-      ...tasks.map((task) => chatApi.removeTask(groupId, task.id)),
+      setDoc(indexRef, value),
+      setDoc(sharedGroupDoc(id), { ...value, ownerId: user.uid }, { merge: true }),
+      setDoc(ownerMemberRef, {
+        id: user.uid,
+        name: user.displayName || user.email || "Owner",
+        email: user.email || null,
+        role: "owner",
+      }, { merge: true }),
     ]);
 
-    const ref = await chatGroupDoc(groupId);
-    await deleteDoc(ref);
+    return value;
+  },
+  removeGroup: async (groupId: string) => {
+    const currentUser = await getAuthedUser();
+
+    const [sharedMembersSnap, sharedMessagesSnap, sharedTasksSnap] = await Promise.all([
+      getDocs(sharedGroupMembersCollection(groupId)),
+      getDocs(sharedGroupMessagesCollection(groupId)),
+      getDocs(sharedGroupTasksCollection(groupId)),
+    ]);
+
+    await Promise.all([
+      ...sharedMembersSnap.docs.map(async (snap) => {
+        await deleteDoc(sharedGroupMemberDoc(groupId, snap.id));
+        const userGroupRef = await chatGroupDocForUser(snap.id, groupId);
+        await deleteDoc(userGroupRef);
+      }),
+      ...sharedMessagesSnap.docs.map((snap) => deleteDoc(sharedGroupMessageDoc(groupId, snap.id))),
+      ...sharedTasksSnap.docs.map((snap) => deleteDoc(sharedGroupTaskDoc(groupId, snap.id))),
+    ]);
+
+    await Promise.all([
+      deleteDoc(sharedGroupDoc(groupId)),
+      deleteDoc(await chatGroupDocForUser(currentUser.uid, groupId)),
+    ]);
+
     return { status: "ok" };
   },
   listMembers: async (groupId: string) => {
-    const col = await chatGroupMembersCollection(groupId);
-    const snaps = await getDocs(col);
+    const snaps = await getDocs(sharedGroupMembersCollection(groupId));
     return snaps.docs
       .sort((a, b) => String(a.data().name ?? "").localeCompare(String(b.data().name ?? "")))
       .map((snap) => toApiChatMember(snap.data() as Record<string, unknown>, snap.id));
   },
   addMember: async (groupId: string, payload: { name: string; email?: string; role?: string }) => {
-    const id = crypto.randomUUID();
-    const ref = await chatGroupMemberDoc(groupId, id);
+    let id = crypto.randomUUID();
+    let normalizedEmail = payload.email?.trim().toLowerCase();
+
+    if (normalizedEmail) {
+      const directorySnaps = await getDocs(collection(firestoreDb, "userDirectory"));
+      const match = directorySnaps.docs
+        .map((snap) => toApiUserDirectoryEntry(snap.data() as Record<string, unknown>, snap.id))
+        .find((entry) => (entry.emailLower || entry.email || "").trim().toLowerCase() === normalizedEmail);
+
+      if (match) {
+        id = match.uid;
+        normalizedEmail = match.email || normalizedEmail;
+        const userGroupRef = await chatGroupDocForUser(match.uid, groupId);
+        await setDoc(userGroupRef, { id: groupId, name: "Shared Group", createdAt: nowIso() }, { merge: true });
+      }
+    }
+
+    const ref = sharedGroupMemberDoc(groupId, id);
     const value: ApiChatMember = {
       id,
       name: payload.name,
-      email: payload.email,
+      email: normalizedEmail,
       role: payload.role ?? "member",
     };
-    await setDoc(ref, value);
+    await setDoc(ref, value, { merge: true });
     return value;
   },
   removeMember: async (groupId: string, memberId: string) => {
-    const ref = await chatGroupMemberDoc(groupId, memberId);
-    await deleteDoc(ref);
+    await deleteDoc(sharedGroupMemberDoc(groupId, memberId));
+    const userGroupRef = await chatGroupDocForUser(memberId, groupId);
+    await deleteDoc(userGroupRef);
     return { status: "ok" };
   },
   listMessages: async (groupId: string) => {
+    const sharedSnaps = await getDocs(sharedGroupMessagesCollection(groupId));
+    const sharedDocs = sharedSnaps.docs.sort((a, b) => {
+      const at = String(a.data().createdAt ?? "");
+      const bt = String(b.data().createdAt ?? "");
+      return at.localeCompare(bt);
+    });
+
+    if (sharedDocs.length > 0) {
+      return sharedDocs.map((snap) => toApiChatMessage(snap.data() as Record<string, unknown>, snap.id));
+    }
+
     const col = await chatGroupMessagesCollection(groupId);
     const snaps = await getDocs(col);
     const docs = snaps.docs.sort((a, b) => {
@@ -535,7 +612,7 @@ export const chatApi = {
   },
   createMessage: async (groupId: string, payload: { author: string; text: string }) => {
     const id = crypto.randomUUID();
-    const ref = await chatGroupMessageDoc(groupId, id);
+    const ref = sharedGroupMessageDoc(groupId, id);
     const value: ApiChatMessage & { createdAt: string } = {
       id,
       author: payload.author,
@@ -547,6 +624,17 @@ export const chatApi = {
     return value;
   },
   listTasks: async (groupId: string) => {
+    const sharedSnaps = await getDocs(sharedGroupTasksCollection(groupId));
+    const sharedDocs = sharedSnaps.docs.sort((a, b) => {
+      const at = String(a.data().createdAt ?? "");
+      const bt = String(b.data().createdAt ?? "");
+      return at.localeCompare(bt);
+    });
+
+    if (sharedDocs.length > 0) {
+      return sharedDocs.map((snap) => toApiChatTask(snap.data() as Record<string, unknown>, snap.id));
+    }
+
     const col = await chatGroupTasksCollection(groupId);
     const snaps = await getDocs(col);
     const docs = snaps.docs.sort((a, b) => {
@@ -558,7 +646,7 @@ export const chatApi = {
   },
   createTask: async (groupId: string, payload: { text: string; tag?: string; assignee?: string }) => {
     const id = crypto.randomUUID();
-    const ref = await chatGroupTaskDoc(groupId, id);
+    const ref = sharedGroupTaskDoc(groupId, id);
     const value: ApiChatTask & { createdAt: string } = {
       id,
       text: payload.text,
@@ -571,13 +659,13 @@ export const chatApi = {
     return value;
   },
   patchTask: async (groupId: string, id: string, payload: Partial<ApiChatTask>) => {
-    const ref = await chatGroupTaskDoc(groupId, id);
+    const ref = sharedGroupTaskDoc(groupId, id);
     await updateDoc(ref, { ...payload, updatedAt: nowIso() });
     const next = await getDoc(ref);
     return toApiChatTask(next.data() as Record<string, unknown>, id);
   },
   removeTask: async (groupId: string, id: string) => {
-    const ref = await chatGroupTaskDoc(groupId, id);
+    const ref = sharedGroupTaskDoc(groupId, id);
     await deleteDoc(ref);
     return { status: "ok" };
   },
@@ -652,31 +740,47 @@ export const inviteApi = {
       { merge: true }
     );
 
-    const inviterMemberRef = await chatGroupMemberDocForUser(user.uid, invite.groupId, invite.fromUserId);
+    const inviterIndexRef = await chatGroupDocForUser(invite.fromUserId, invite.groupId);
+    await setDoc(inviterIndexRef, {
+      id: invite.groupId,
+      name: invite.groupName,
+      createdAt: nowIso(),
+    }, { merge: true });
+
     await setDoc(
-      inviterMemberRef,
+      sharedGroupDoc(invite.groupId),
       {
-        id: invite.fromUserId,
-        name: invite.fromName,
-        email: invite.fromEmail || null,
-        role: "owner",
+        id: invite.groupId,
+        name: invite.groupName,
+        createdAt: nowIso(),
+        ownerId: invite.fromUserId,
       },
       { merge: true }
     );
 
-    // Mirror membership on inviter side so they can see accepted members in their group list.
-    const acceptedMemberRefOnInviter = await chatGroupMemberDocForUser(invite.fromUserId, invite.groupId, user.uid);
-    await setDoc(
-      acceptedMemberRefOnInviter,
-      {
-        id: user.uid,
-        name: user.displayName || user.email || "Member",
-        email: user.email || null,
-        role: "member",
-        acceptedAt: nowIso(),
-      },
-      { merge: true }
-    );
+    await Promise.all([
+      setDoc(
+        sharedGroupMemberDoc(invite.groupId, user.uid),
+        {
+          id: user.uid,
+          name: user.displayName || user.email || "Member",
+          email: user.email || null,
+          role: "member",
+          acceptedAt: nowIso(),
+        },
+        { merge: true }
+      ),
+      setDoc(
+        sharedGroupMemberDoc(invite.groupId, invite.fromUserId),
+        {
+          id: invite.fromUserId,
+          name: invite.fromName,
+          email: invite.fromEmail || null,
+          role: "owner",
+        },
+        { merge: true }
+      ),
+    ]);
 
     await updateDoc(inviteRef, { status: "accepted", respondedAt: nowIso() });
     return { status: "ok" as const, invite };

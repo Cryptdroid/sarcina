@@ -11,7 +11,9 @@ interface FocusTimerWidgetProps {
 export function FocusTimerWidget({ setTimerActive }: FocusTimerWidgetProps) {
   const {
     mode, timeLeft, isRunning, progress,
-    toggleTimer, resetTimer, handleModeSwitch, formatTime,
+    workDuration, breakDuration,
+    toggleTimer, resetTimer, handleModeSwitch, setWorkDuration, setBreakDuration,
+    adjustCurrentTime, setCurrentTimeMinutes, formatTime,
   } = useFocus();
 
   useEffect(() => {
@@ -102,6 +104,63 @@ export function FocusTimerWidget({ setTimerActive }: FocusTimerWidgetProps) {
         >
           <RotateCcw size={16} />
         </button>
+      </div>
+
+      <div className="w-full grid grid-cols-1 gap-2 mt-1">
+        <div className="grid grid-cols-2 gap-2">
+          <label className="rounded-lg border border-(--glass-border) bg-black/5 dark:bg-white/5 px-3 py-2 text-xs">
+            <span className="text-(--foreground-muted)">Work (min)</span>
+            <input
+              type="number"
+              min={1}
+              max={240}
+              value={workDuration}
+              onChange={(event) => setWorkDuration(Math.max(1, Math.min(240, Number(event.target.value) || 1)))}
+              className="mt-1 w-full bg-transparent text-foreground focus:outline-none"
+            />
+          </label>
+          <label className="rounded-lg border border-(--glass-border) bg-black/5 dark:bg-white/5 px-3 py-2 text-xs">
+            <span className="text-(--foreground-muted)">Break (min)</span>
+            <input
+              type="number"
+              min={1}
+              max={240}
+              value={breakDuration}
+              onChange={(event) => setBreakDuration(Math.max(1, Math.min(240, Number(event.target.value) || 1)))}
+              className="mt-1 w-full bg-transparent text-foreground focus:outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="rounded-lg border border-(--glass-border) bg-black/5 dark:bg-white/5 px-3 py-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-(--foreground-muted)">Current {mode} session</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => adjustCurrentTime(-1)}
+                className="h-6 w-6 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/15"
+              >
+                -
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={240}
+                value={Math.max(1, Math.round(timeLeft / 60))}
+                onChange={(event) => setCurrentTimeMinutes(Number(event.target.value) || 1)}
+                className="w-14 rounded bg-transparent text-center text-foreground focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => adjustCurrentTime(1)}
+                className="h-6 w-6 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/15"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   );

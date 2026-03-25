@@ -27,6 +27,8 @@ interface FocusContextType extends FocusState {
   handleModeSwitch: (newMode: "work" | "break") => void;
   setWorkDuration: (val: number) => void;
   setBreakDuration: (val: number) => void;
+  adjustCurrentTime: (deltaMinutes: number) => void;
+  setCurrentTimeMinutes: (minutes: number) => void;
   progress: number;
   totalTime: number;
   formatTime: (seconds: number) => string;
@@ -217,6 +219,20 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const adjustCurrentTime = useCallback((deltaMinutes: number) => {
+    setState((prev) => {
+      const next = Math.max(60, Math.min(4 * 60 * 60, prev.timeLeft + deltaMinutes * 60));
+      return { ...prev, timeLeft: next };
+    });
+  }, []);
+
+  const setCurrentTimeMinutes = useCallback((minutes: number) => {
+    setState((prev) => {
+      const next = Math.max(1, Math.min(240, Math.floor(minutes || 0)));
+      return { ...prev, timeLeft: next * 60 };
+    });
+  }, []);
+
   const totalTime = state.mode === "work" ? state.workDuration * 60 : state.breakDuration * 60;
   const progress = ((totalTime - state.timeLeft) / totalTime) * 100;
 
@@ -235,6 +251,8 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
         handleModeSwitch,
         setWorkDuration,
         setBreakDuration,
+        adjustCurrentTime,
+        setCurrentTimeMinutes,
         progress,
         totalTime,
         formatTime,

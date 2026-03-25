@@ -4,14 +4,84 @@ import { useState } from "react";
 import { Check, Flame, Plus, Trash2 } from "lucide-react";
 import { useHabits } from "@/lib/HabitContext";
 
+function normalize(text: string): string {
+  return text.toLowerCase().trim();
+}
+
+function aiHabitIdeas(goal: string): string[] {
+  const q = normalize(goal);
+  if (!q) {
+    return [];
+  }
+
+  if (/sleep|bed|wake|morning/.test(q)) {
+    return [
+      "No phone for 20 minutes before sleep",
+      "Wake up at the same time daily",
+      "Get 10 minutes of morning sunlight",
+    ];
+  }
+
+  if (/fit|workout|gym|exercise|health/.test(q)) {
+    return [
+      "Do a 10-minute movement session",
+      "Take a 20-minute walk after lunch",
+      "Prepare workout clothes the night before",
+    ];
+  }
+
+  if (/study|learn|exam|course|read/.test(q)) {
+    return [
+      "Study in one 25-minute focus block",
+      "Write 3 key takeaways after each session",
+      "Review yesterday's notes for 10 minutes",
+    ];
+  }
+
+  if (/focus|productiv|deep work|distraction/.test(q)) {
+    return [
+      "Start one 25-minute no-distraction sprint",
+      "Plan top 1 priority before 10 AM",
+      "Do a 2-minute desk reset before work block",
+    ];
+  }
+
+  return [
+    "Drink water right after waking up",
+    "Take one 10-minute reset walk",
+    "Write tomorrow's top priority before bed",
+  ];
+}
+
 export function HabitTrackerWidget() {
   const { habits, mounted, addHabit, toggleHabit, deleteHabit, todayStr } = useHabits();
   const [newHabit, setNewHabit] = useState("");
+  const [coachPrompt, setCoachPrompt] = useState("");
+  const [coachIdeas, setCoachIdeas] = useState<string[]>([]);
+  const [coachMessage, setCoachMessage] = useState<string>("Tell AI your goal to get 3 micro-habits.");
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     addHabit(newHabit);
     setNewHabit("");
+  };
+
+  const runCoach = () => {
+    const ideas = aiHabitIdeas(coachPrompt);
+    setCoachIdeas(ideas);
+
+    const atRisk = habits.filter((habit) => habit.streak > 0 && habit.lastCompletedDate !== todayStr).length;
+    if (ideas.length === 0) {
+      setCoachMessage("Add a goal like 'sleep better' or 'study consistently'.");
+      return;
+    }
+
+    if (atRisk > 0) {
+      setCoachMessage(`${atRisk} active streak${atRisk > 1 ? "s" : ""} need rescue today. Pick one easy win first.`);
+      return;
+    }
+
+    setCoachMessage("Good momentum. Start with the easiest habit and repeat daily for 7 days.");
   };
 
   if (!mounted) return (
@@ -48,6 +118,51 @@ export function HabitTrackerWidget() {
             <Plus size={14} />
           </button>
         </form>
+
+        <div className="rounded-xl border border-(--glass-border) bg-black/6 dark:bg-white/6 p-3 mb-2">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-(--foreground-muted)">AI Habit Coach</p>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="text"
+              value={coachPrompt}
+              onChange={(e) => setCoachPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  runCoach();
+                }
+              }}
+              placeholder="Example: sleep better, be fit, study daily"
+              className="flex-1 rounded-lg border border-(--glass-border) bg-white/70 dark:bg-white/5 px-3 py-2 text-xs text-foreground placeholder:text-(--foreground-muted) focus:outline-none focus:border-foreground"
+            />
+            <button
+              type="button"
+              onClick={runCoach}
+              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-3 py-2 text-xs font-semibold hover:opacity-90"
+            >
+              Suggest
+            </button>
+          </div>
+
+          <p className="mt-2 text-[11px] text-(--foreground-muted)">{coachMessage}</p>
+
+          {coachIdeas.length > 0 ? (
+            <div className="mt-2 space-y-1.5">
+              {coachIdeas.map((idea) => (
+                <div key={idea} className="rounded-lg border border-(--glass-border) bg-black/6 dark:bg-white/6 px-2.5 py-1.5 flex items-center justify-between gap-2">
+                  <p className="text-xs text-foreground truncate">{idea}</p>
+                  <button
+                    type="button"
+                    onClick={() => addHabit(idea)}
+                    className="text-[11px] rounded-md px-2 py-1 bg-white/10 hover:bg-white/20 text-foreground"
+                  >
+                    Add
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         <div className="flex flex-col gap-2 overflow-y-auto max-h-40 pr-1">
           {habits.length === 0 && (

@@ -13,6 +13,8 @@ import {
   profileApi,
 } from "@/lib/backendApi";
 import { useAuth } from "@/lib/AuthContext";
+import { firestoreDb } from "@/lib/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
 
 const ACTIVE_GROUP_STORAGE_KEY = "flowstate:teamhub:active-group";
 
@@ -195,12 +197,141 @@ export default function TeamChat() {
   }, [loading, user]);
 
   useEffect(() => {
+    if (!user?.uid) {
+      return;
+    }
+
+    const groupsRef = collection(firestoreDb, "users", user.uid, "chatGroups");
+    const unsubscribe = onSnapshot(groupsRef, (snapshot) => {
+      const nextGroups = snapshot.docs
+        .map((docSnap) => {
+          const raw = docSnap.data() as Record<string, unknown>;
+          return {
+            id: docSnap.id,
+            name: String(raw.name ?? "Untitled Group"),
+            createdAt: String(raw.createdAt ?? ""),
+          } as ApiChatGroup;
+        })
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+      setGroups(nextGroups);
+      if (nextGroups.length === 0) {
+        setActiveGroupId(null);
+        writeStoredActiveGroup(null);
+        return;
+      }
+
+      setActiveGroupId((prev) => {
+        const preferred = prev && nextGroups.some((group) => group.id === prev) ? prev : nextGroups[0].id;
+        writeStoredActiveGroup(preferred);
+        return preferred;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      return;
+    }
+
+    const invitesRef = collection(firestoreDb, "users", user.uid, "groupInvites");
+    const unsubscribe = onSnapshot(invitesRef, (snapshot) => {
+      const invites = snapshot.docs
+        .map((docSnap) => {
+          const raw = docSnap.data() as Record<string, unknown>;
+          return {
+            id: docSnap.id,
+            groupId: String(raw.groupId ?? ""),
+            groupName: String(raw.groupName ?? "Group"),
+            fromUserId: String(raw.fromUserId ?? ""),
+            fromName: String(raw.fromName ?? "User"),
+            fromEmail: typeof raw.fromEmail === "string" ? raw.fromEmail : undefined,
+            toUserId: String(raw.toUserId ?? ""),
+            toName: String(raw.toName ?? "User"),
+            toEmail: typeof raw.toEmail === "string" ? raw.toEmail : undefined,
+            status: raw.status === "accepted" || raw.status === "declined" ? raw.status : "pending",
+            createdAt: String(raw.createdAt ?? ""),
+          } as ApiGroupInvite;
+        })
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+      setIncomingInvites(invites);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  useEffect(() => {
     if (!activeGroupId) {
       return;
     }
 
     writeStoredActiveGroup(activeGroupId);
     void loadActiveGroupData(activeGroupId);
+  }, [activeGroupId]);
+
+  useEffect(() => {
+    if (!activeGroupId) {
+      return;
+    }
+
+    const membersRef = collection(firestoreDb, "teamGroups", activeGroupId, "members");
+    const messagesRef = collection(firestoreDb, "teamGroups", activeGroupId, "messages");
+    const tasksRef = collection(firestoreDb, "teamGroups", activeGroupId, "tasks");
+
+    const unsubMembers = onSnapshot(membersRef, (snapshot) => {
+      const nextMembers = snapshot.docs
+        .map((docSnap) => {
+          const raw = docSnap.data() as Record<string, unknown>;
+          return {
+            id: docSnap.id,
+            name: String(raw.name ?? "Member"),
+            email: typeof raw.email === "string" ? raw.email : undefined,
+            role: String(raw.role ?? "member"),
+          } as ApiChatMember;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setMembers(nextMembers);
+    });
+
+    const unsubMessages = onSnapshot(messagesRef, (snapshot) => {
+      const nextMessages = snapshot.docs
+        .map((docSnap) => {
+          const raw = docSnap.data() as Record<string, unknown>;
+          return {
+            id: docSnap.id,
+            author: String(raw.author ?? "You"),
+            text: String(raw.text ?? ""),
+            time: String(raw.time ?? raw.createdAt ?? new Date().toISOString()),
+          } as ChatMessage;
+        })
+        .sort((a, b) => a.time.localeCompare(b.time));
+      setMessages(nextMessages);
+    });
+
+    const unsubTasks = onSnapshot(tasksRef, (snapshot) => {
+      const nextTasks = snapshot.docs
+        .map((docSnap) => {
+          const raw = docSnap.data() as Record<string, unknown>;
+          return {
+            id: docSnap.id,
+            text: String(raw.text ?? ""),
+            completed: Boolean(raw.completed ?? false),
+            tag: String(raw.tag ?? "General"),
+            assignee: typeof raw.assignee === "string" ? raw.assignee : undefined,
+          } as SharedTask;
+        })
+        .sort((a, b) => a.text.localeCompare(b.text));
+      setSharedTasks(nextTasks);
+    });
+
+    return () => {
+      unsubMembers();
+      unsubMessages();
+      unsubTasks();
+    };
   }, [activeGroupId]);
 
   useEffect(() => {
