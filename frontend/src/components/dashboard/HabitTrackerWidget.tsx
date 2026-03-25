@@ -9,72 +9,202 @@ type CoachIdea = {
   reason: string;
 };
 
+type CoachSource = "puter" | "gemini" | "free-model" | "fallback";
+
+type PuterIdeasResult = {
+  ideas: CoachIdea[];
+  error: string | null;
+};
+
 function normalize(text: string): string {
   return text.toLowerCase().trim();
 }
 
-function aiHabitIdeas(goal: string, habits: Array<{ name: string; streak: number; lastCompletedDate: string | null }>, todayStr: string): CoachIdea[] {
+function localFallbackIdeas(goal: string, habits: Array<{ name: string }>): CoachIdea[] {
   const q = normalize(goal);
-  if (!q) {
-    return [];
-  }
+  const existingNames = habits.map((habit) => normalize(habit.name));
+  const ideas: CoachIdea[] = [];
 
-  const habitNames = new Set(habits.map((habit) => normalize(habit.name)));
-  const addIfMissing = (ideas: CoachIdea[], idea: CoachIdea) => {
+  const addIfMissing = (idea: CoachIdea) => {
     const normalizedIdea = normalize(idea.text);
-    const existsAlready = Array.from(habitNames).some((name) => normalizedIdea.includes(name) || name.includes(normalizedIdea));
+    const existsAlready = existingNames.some((name) => normalizedIdea.includes(name) || name.includes(normalizedIdea));
     const duplicateInIdeas = ideas.some((entry) => normalize(entry.text) === normalizedIdea);
     if (!existsAlready && !duplicateInIdeas) {
       ideas.push(idea);
     }
   };
 
-  const suggestions: CoachIdea[] = [];
-  const atRisk = habits.filter((habit) => habit.streak > 0 && habit.lastCompletedDate !== todayStr).length;
+  addIfMissing({ text: `Do one 15-minute focused drill for ${q || "your goal"}`, reason: "Short sessions are easier to repeat daily." });
+  addIfMissing({ text: "Review one mistake and note one improvement", reason: "Fast feedback compounds progress." });
+  addIfMissing({ text: "Track one metric after practice", reason: "Measurement keeps improvement visible." });
+  addIfMissing({ text: "Set a fixed daily time for this habit", reason: "Time cues make consistency easier." });
 
-  if (/sleep|bed|wake|morning/.test(q)) {
-    addIfMissing(suggestions, { text: "No phone for 20 minutes before sleep", reason: "Reduces stimulation and helps sleep onset." });
-    addIfMissing(suggestions, { text: "Wake up at the same time daily", reason: "Stabilizes your body clock and energy." });
-    addIfMissing(suggestions, { text: "Get 10 minutes of morning sunlight", reason: "Supports alertness and nighttime sleep quality." });
-    addIfMissing(suggestions, { text: "Set a fixed lights-off reminder", reason: "Turns intention into a reliable trigger." });
+  return ideas.slice(0, 4);
+}
+
+function parseSuggestionPayload(raw: unknown): CoachIdea[] {
+  const payload = raw as { suggestions?: unknown };
+  const rawSuggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+  return rawSuggestions
+    .map((item: unknown) => {
+      const candidate = item as { text?: unknown; reason?: unknown };
+      return {
+        text: typeof candidate.text === "string" ? candidate.text.trim() : "",
+        reason: typeof candidate.reason === "string" ? candidate.reason.trim() : "",
+      };
+    })
+    .filter((item: CoachIdea) => item.text.length > 0 && item.reason.length > 0)
+    .slice(0, 4);
+}
+
+function extractJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/i);
+  if (fenceMatch?.[1]) {
+    return fenceMatch[1];
   }
 
-  if (/fit|workout|gym|exercise|health/.test(q)) {
-    addIfMissing(suggestions, { text: "Do a 10-minute movement session", reason: "Lowers friction and keeps consistency high." });
-    addIfMissing(suggestions, { text: "Take a 20-minute walk after lunch", reason: "Simple daily movement anchor." });
-    addIfMissing(suggestions, { text: "Prepare workout clothes the night before", reason: "Pre-commitment makes starts easier." });
-    addIfMissing(suggestions, { text: "Track one weekly progress metric", reason: "Measurement improves adherence." });
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    return trimmed.slice(first, last + 1);
   }
 
-  if (/study|learn|exam|course|read/.test(q)) {
-    addIfMissing(suggestions, { text: "Study in one 25-minute focus block", reason: "Short deep blocks are easier to sustain." });
-    addIfMissing(suggestions, { text: "Write 3 key takeaways after each session", reason: "Improves retention through active recall." });
-    addIfMissing(suggestions, { text: "Review yesterday's notes for 10 minutes", reason: "Spaced repetition strengthens memory." });
-    addIfMissing(suggestions, { text: "Create 5 quick self-test questions", reason: "Testing reveals weak spots early." });
+  return null;
+}
+
+async function waitForPuterReady(maxMs = 2500): Promise<boolean> {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  if (window.puter?.ai?.chat) {
+    return true;
   }
 
-  if (/focus|productiv|deep work|distraction/.test(q)) {
-    addIfMissing(suggestions, { text: "Start one 25-minute no-distraction sprint", reason: "Creates a reliable deep-work trigger." });
-    addIfMissing(suggestions, { text: "Plan top 1 priority before 10 AM", reason: "Protects your highest-value task." });
-    addIfMissing(suggestions, { text: "Do a 2-minute desk reset before work block", reason: "Environment reset reduces mental friction." });
-    addIfMissing(suggestions, { text: "Silence notifications during work sprint", reason: "Cuts context-switching penalties." });
+  const started = Date.now();
+  while (Date.now() - started < maxMs) {
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+    if (window.puter?.ai?.chat) {
+      return true;
+    }
   }
 
-  if (suggestions.length === 0) {
-    addIfMissing(suggestions, { text: "Drink water right after waking up", reason: "Easy first win that compounds daily." });
-    addIfMissing(suggestions, { text: "Take one 10-minute reset walk", reason: "Resets energy without heavy effort." });
-    addIfMissing(suggestions, { text: "Write tomorrow's top priority before bed", reason: "Improves morning clarity." });
-    addIfMissing(suggestions, { text: "Set one fixed time cue for your habit", reason: "Time-based cues improve consistency." });
+  return false;
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeoutId: number | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error("Timed out")), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+}
+
+async function puterResponseToText(response: unknown): Promise<string | null> {
+  if (typeof response === "string") {
+    return response;
   }
 
-  if (atRisk > 0) {
-    addIfMissing(suggestions, {
-      text: "Rescue one active streak today with a 2-minute version",
-      reason: "Protecting streak continuity keeps momentum alive.",
-    });
+  if (!response || typeof response !== "object") {
+    return null;
   }
 
-  return suggestions.slice(0, 4);
+  const maybeAsyncIterable = response as AsyncIterable<{ text?: unknown }>;
+  if (typeof maybeAsyncIterable[Symbol.asyncIterator] === "function") {
+    let combined = "";
+    for await (const part of maybeAsyncIterable) {
+      if (typeof part?.text === "string") {
+        combined += part.text;
+      }
+    }
+    return combined.trim() || null;
+  }
+
+  const raw = response as {
+    text?: unknown;
+    content?: unknown;
+    output?: unknown;
+    message?: unknown;
+  };
+
+  if (typeof raw.text === "string") {
+    return raw.text;
+  }
+  if (typeof raw.content === "string") {
+    return raw.content;
+  }
+  if (typeof raw.output === "string") {
+    return raw.output;
+  }
+
+  if (raw.message && typeof raw.message === "object") {
+    const msg = raw.message as { content?: unknown; text?: unknown };
+    if (typeof msg.content === "string") {
+      return msg.content;
+    }
+    if (typeof msg.text === "string") {
+      return msg.text;
+    }
+  }
+
+  return null;
+}
+
+async function fetchPuterIdeas(goal: string, habits: Array<{ name: string }>): Promise<PuterIdeasResult> {
+  if (!(await waitForPuterReady())) {
+    return { ideas: [], error: "Puter SDK not loaded (possibly blocked by browser shield/extension)." };
+  }
+  const puter = window.puter;
+  if (!puter?.ai?.chat) {
+    return { ideas: [], error: "Puter AI API is unavailable in this tab." };
+  }
+
+  const existing = habits.map((habit) => habit.name).filter(Boolean);
+  const prompt = [
+    "Return only strict JSON with this schema:",
+    '{"suggestions":[{"text":"string","reason":"string"}]}.',
+    "Generate exactly 4 practical micro-habits for the goal.",
+    "Each habit must be specific, short, and doable today.",
+    `Avoid duplicates and avoid these existing habits: ${existing.length ? existing.join(", ") : "none"}.`,
+    `goal=${goal}`,
+  ].join("\n");
+
+  let response: unknown;
+  try {
+    response = await withTimeout(
+      puter.ai.chat(prompt, {
+        model: "gemini-3-flash-preview",
+      }),
+      12000
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown Puter request error.";
+    return { ideas: [], error: `Puter request failed: ${message}` };
+  }
+
+  const responseText = await puterResponseToText(response);
+  if (!responseText) {
+    return { ideas: [], error: "Puter returned empty or unsupported response format." };
+  }
+
+  const jsonText = extractJsonObject(responseText);
+  if (!jsonText) {
+    return { ideas: [], error: "Puter response did not contain valid JSON." };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    return { ideas: parseSuggestionPayload(parsed), error: null };
+  } catch {
+    return { ideas: [], error: "Puter JSON parse failed." };
+  }
 }
 
 export function HabitTrackerWidget() {
@@ -83,6 +213,7 @@ export function HabitTrackerWidget() {
   const [coachPrompt, setCoachPrompt] = useState("");
   const [coachIdeas, setCoachIdeas] = useState<CoachIdea[]>([]);
   const [coachMessage, setCoachMessage] = useState<string>("Tell AI your goal to get 3 micro-habits.");
+  const [coachLoading, setCoachLoading] = useState(false);
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,28 +221,84 @@ export function HabitTrackerWidget() {
     setNewHabit("");
   };
 
-  const runCoach = () => {
-    const ideas = aiHabitIdeas(coachPrompt, habits, todayStr);
+  const runCoach = async () => {
+    const trimmedGoal = coachPrompt.trim();
+    if (trimmedGoal.length < 3) {
+      setCoachMessage("Add a clearer goal like 'improve Valorant aim' or 'sleep better'.");
+      setCoachIdeas([]);
+      return;
+    }
+
+    setCoachLoading(true);
+
+    let ideas: CoachIdea[] = [];
+    let source: CoachSource = "fallback";
+    let backendMessage: string | null = null;
+    let puterError: string | null = null;
+
+    try {
+      const puterResult = await fetchPuterIdeas(trimmedGoal, habits);
+      puterError = puterResult.error;
+      if (puterResult.ideas.length > 0) {
+        ideas = puterResult.ideas;
+        source = "puter";
+      } else {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000"}/api/agent/habit-suggestions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            goal: trimmedGoal,
+            existing_habits: habits.map((habit) => habit.name),
+            count: 4,
+            local_only: true,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Habit suggestions failed with ${response.status}`);
+        }
+
+        const payload = await response.json();
+        ideas = parseSuggestionPayload(payload);
+        source = payload?.source === "gemini" || payload?.source === "free-model" ? payload.source : "fallback";
+        backendMessage = typeof payload?.message === "string" ? payload.message : null;
+      }
+    } catch (error) {
+      ideas = localFallbackIdeas(trimmedGoal, habits);
+      source = "fallback";
+      const errorMessage = error instanceof Error ? error.message : "Unknown backend error.";
+      backendMessage = `Could not reach backend model. ${puterError ? `Puter: ${puterError}. ` : ""}Backend: ${errorMessage}.`;
+    }
+
     setCoachIdeas(ideas);
 
     const atRisk = habits.filter((habit) => habit.streak > 0 && habit.lastCompletedDate !== todayStr).length;
     const doneToday = habits.filter((habit) => habit.lastCompletedDate === todayStr).length;
+    const sourceLabel = source === "puter" ? "Puter" : source === "gemini" ? "Gemini" : source === "free-model" ? "Free API" : "Local fallback";
     if (ideas.length === 0) {
       setCoachMessage("Add a goal like 'sleep better' or 'study consistently'.");
+      setCoachLoading(false);
       return;
     }
 
     if (atRisk > 0) {
-      setCoachMessage(`${atRisk} active streak${atRisk > 1 ? "s" : ""} need rescue today. Pick one easy win first.`);
+      setCoachMessage(`${atRisk} active streak${atRisk > 1 ? "s" : ""} need rescue today. Pick one easy win first. Source: ${sourceLabel}.`);
+      setCoachLoading(false);
       return;
     }
 
     if (doneToday === 0 && habits.length > 0) {
-      setCoachMessage("No habits completed yet today. Start with the easiest suggestion to build momentum.");
+      setCoachMessage(`No habits completed yet today. Start with the easiest suggestion to build momentum. Source: ${sourceLabel}.`);
+      setCoachLoading(false);
       return;
     }
 
-    setCoachMessage("Good momentum. Start with the easiest habit and repeat daily for 7 days.");
+    setCoachMessage(
+      source !== "fallback"
+        ? `Good momentum. Suggestions are AI-generated for your goal; start with the easiest one and repeat for 7 days. Source: ${sourceLabel}.`
+        : (backendMessage ? `${backendMessage} Source: ${sourceLabel}.` : `Good momentum. Start with the easiest habit and repeat daily for 7 days. Source: ${sourceLabel}.`)
+    );
+    setCoachLoading(false);
   };
 
   const completedToday = habits.filter((habit) => habit.lastCompletedDate === todayStr).length;
@@ -189,9 +376,10 @@ export function HabitTrackerWidget() {
             <button
               type="button"
               onClick={runCoach}
-              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-3 py-2 text-xs font-semibold hover:opacity-90"
+              disabled={coachLoading}
+              className="rounded-lg bg-black text-white dark:bg-white dark:text-black px-3 py-2 text-xs font-semibold hover:opacity-90 disabled:opacity-60"
             >
-              Suggest
+              {coachLoading ? "Thinking..." : "Suggest"}
             </button>
           </div>
 

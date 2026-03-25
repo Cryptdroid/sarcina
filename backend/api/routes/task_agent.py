@@ -48,6 +48,24 @@ class OrchestrateRequest(BaseModel):
     mood: str | None = None
 
 
+class HabitSuggestionRequest(BaseModel):
+    goal: str = Field(..., min_length=3, max_length=240)
+    existing_habits: list[str] = Field(default_factory=list)
+    count: int = Field(default=4, ge=1, le=6)
+    local_only: bool = False
+
+
+class HabitSuggestionItem(BaseModel):
+    text: str
+    reason: str
+
+
+class HabitSuggestionResponse(BaseModel):
+    suggestions: list[HabitSuggestionItem]
+    source: str
+    message: str | None = None
+
+
 @router.post("/new-task", response_model=TaskAgentResponse)
 def create_task_from_prompt(payload: TaskAgentRequest) -> TaskAgentResponse:
     planned_items = planner_model.plan_tasks(payload.prompt, payload.preferred_date)
@@ -111,3 +129,19 @@ def orchestrate_tasks(payload: OrchestrateRequest) -> dict[str, Any]:
         **orchestration,
         "hasPlanner": payload.planner is not None,
     }
+
+
+@router.post("/habit-suggestions", response_model=HabitSuggestionResponse)
+def suggest_habits(payload: HabitSuggestionRequest) -> HabitSuggestionResponse:
+    suggestions, source, message = planner_model.suggest_habits(
+        payload.goal,
+        payload.existing_habits,
+        payload.count,
+        use_external=not payload.local_only,
+    )
+    serialized = [HabitSuggestionItem(text=item.text, reason=item.reason) for item in suggestions]
+    return HabitSuggestionResponse(
+        suggestions=serialized,
+        source=source,
+        message=message,
+    )

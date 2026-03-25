@@ -4,6 +4,7 @@ import json
 import os
 import re
 from urllib import error as urllib_error
+from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -94,10 +95,251 @@ class ScheduledTask:
     reasoning: str
 
 
+@dataclass
+class HabitSuggestion:
+    text: str
+    reason: str
+
+
 class TaskPlannerModel:
     """Lightweight local planner model that extracts task title + due date from prompt."""
 
     GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+    FREE_HABIT_MODEL_ENDPOINT = "https://text.pollinations.ai"
+
+    def suggest_habits(
+        self,
+        goal: str,
+        existing_habits: list[str] | None = None,
+        count: int = 4,
+        use_external: bool = True,
+    ) -> tuple[list[HabitSuggestion], str, str | None]:
+        cleaned_goal = " ".join(goal.split()).strip()
+        habit_names = [name.strip() for name in (existing_habits or []) if isinstance(name, str) and name.strip()]
+
+        if not use_external:
+            fallback = self._suggest_habits_fallback(cleaned_goal, habit_names, count)
+            return fallback, "fallback", "Used local planner model by request."
+
+        free_model_suggestions, free_model_error = self._suggest_habits_with_free_model(
+            cleaned_goal,
+            habit_names,
+            count,
+        )
+        if free_model_suggestions:
+            return free_model_suggestions, "free-model", None
+
+        gemini_suggestions, gemini_error = self._suggest_habits_with_gemini(
+            cleaned_goal,
+            habit_names,
+            count,
+        )
+        if gemini_suggestions:
+            return gemini_suggestions, "gemini", None
+
+        fallback = self._suggest_habits_fallback(cleaned_goal, habit_names, count)
+        errors = [err for err in [free_model_error, gemini_error] if err]
+        if errors:
+            return fallback, "fallback", f"Used local fallback suggestions. Reason: {'; '.join(errors)}"
+        return fallback, "fallback", "Used local fallback suggestions."
+
+    def _suggest_habits_with_free_model(
+        self,
+        goal: str,
+        existing_habits: list[str],
+        count: int,
+    ) -> tuple[list[HabitSuggestion] | None, str | None]:
+        if not goal:
+            return None, "Goal missing for free model."
+
+        existing_list = ", ".join(existing_habits) if existing_habits else "none"
+        instruction = (
+            "Return only strict JSON with this schema: "
+            '{"suggestions":[{"text":"string","reason":"string"}]}. '
+            f"Generate exactly {count} tiny practical habits for the goal. "
+            "Each habit should be concrete, short, and executable today. "
+            "Avoid duplicates and avoid these existing habits: "
+            f"{existing_list}. "
+            "No markdown and no extra fields."
+        )
+        full_prompt = f"{instruction}\ngoal={goal}"
+        encoded_prompt = urllib_parse.quote(full_prompt, safe="")
+        request_url = f"{self.FREE_HABIT_MODEL_ENDPOINT}/{encoded_prompt}"
+
+        req = urllib_request.Request(
+            request_url,
+            headers={"Accept": "text/plain"},
+            method="GET",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=12) as response:
+                body = response.read().decode("utf-8")
+        except urllib_error.URLError:
+            return None, "Free model request failed."
+
+        parsed_payload = self._extract_json_payload(body)
+        if not parsed_payload:
+            return None, "Free model content was not valid habit JSON."
+
+        raw_suggestions = parsed_payload.get("suggestions")
+        if not isinstance(raw_suggestions, list) or not raw_suggestions:
+            return None, "Free model returned no suggestions."
+
+        normalized = self._normalize_habit_suggestions(raw_suggestions, existing_habits, count)
+        if not normalized:
+            return None, "Free model suggestions could not be normalized."
+
+        return normalized, None
+
+    def _suggest_habits_with_gemini(
+        self,
+        goal: str,
+        existing_habits: list[str],
+        count: int,
+    ) -> tuple[list[HabitSuggestion] | None, str | None]:
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            return None, "Gemini API key missing."
+
+        existing_list = ", ".join(existing_habits) if existing_habits else "none"
+        instruction = (
+            "You are a behavior coach. Return only strict JSON with this schema: "
+            '{"suggestions":[{"text":"string","reason":"string"}]}. '
+            f"Generate exactly {count} tiny, practical habits based on the goal. "
+            "Each habit should be 5-30 minutes and specific enough to execute today. "
+            "Avoid suggesting these existing habits: "
+            f"{existing_list}. "
+            "No markdown and no extra fields."
+        )
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": (
+                                f"{instruction}\n"
+                                f"goal={goal}"
+                            )
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.5,
+                "responseMimeType": "application/json",
+            },
+        }
+
+        request_url = f"{self.GEMINI_ENDPOINT}?key={api_key}"
+        req = urllib_request.Request(
+            request_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=10) as response:
+                body = response.read().decode("utf-8")
+        except urllib_error.URLError:
+            return None, "Gemini request failed."
+
+        try:
+            response_json = json.loads(body)
+        except json.JSONDecodeError:
+            return None, "Gemini returned invalid JSON response."
+
+        text_payload = self._extract_gemini_text(response_json)
+        if not text_payload:
+            return None, "Gemini response had no usable content."
+
+        parsed_payload = self._extract_json_payload(text_payload)
+        if not parsed_payload:
+            return None, "Gemini content was not valid habit JSON."
+
+        raw_suggestions = parsed_payload.get("suggestions")
+        if not isinstance(raw_suggestions, list) or not raw_suggestions:
+            return None, "Gemini returned no suggestions."
+
+        normalized = self._normalize_habit_suggestions(raw_suggestions, existing_habits, count)
+        if not normalized:
+            return None, "Gemini suggestions could not be normalized."
+
+        return normalized, None
+
+    def _suggest_habits_fallback(
+        self,
+        goal: str,
+        existing_habits: list[str],
+        count: int,
+    ) -> list[HabitSuggestion]:
+        suggestions = [
+            HabitSuggestion(
+                text=f"Do one 15-minute focused drill toward '{goal}'",
+                reason="Short, repeatable drills build consistent progress.",
+            ),
+            HabitSuggestion(
+                text="Review one key mistake and write one fix",
+                reason="Fast feedback loops improve skill faster than passive repetition.",
+            ),
+            HabitSuggestion(
+                text="Log one metric after each session",
+                reason="Tracking one number keeps improvement objective and visible.",
+            ),
+            HabitSuggestion(
+                text="Set a fixed daily time cue for this habit",
+                reason="A stable trigger reduces decision fatigue and increases follow-through.",
+            ),
+            HabitSuggestion(
+                text="Run a 2-minute version when motivation is low",
+                reason="Tiny fallback reps protect consistency on hard days.",
+            ),
+        ]
+
+        existing_normalized = [name.lower().strip() for name in existing_habits if name.strip()]
+        filtered: list[HabitSuggestion] = []
+        for suggestion in suggestions:
+            lowered = suggestion.text.lower().strip()
+            if any(name and (name in lowered or lowered in name) for name in existing_normalized):
+                continue
+            if any(item.text.lower().strip() == lowered for item in filtered):
+                continue
+            filtered.append(suggestion)
+            if len(filtered) >= count:
+                break
+
+        return filtered
+
+    def _normalize_habit_suggestions(
+        self,
+        raw_suggestions: list[Any],
+        existing_habits: list[str],
+        count: int,
+    ) -> list[HabitSuggestion]:
+        existing_normalized = [name.lower().strip() for name in existing_habits if name.strip()]
+        normalized: list[HabitSuggestion] = []
+
+        for raw_item in raw_suggestions:
+            if not isinstance(raw_item, dict):
+                continue
+
+            text = str(raw_item.get("text", "")).strip()
+            reason = str(raw_item.get("reason", "")).strip()
+            if not text or not reason:
+                continue
+
+            lowered = text.lower().strip()
+            if any(name and (name in lowered or lowered in name) for name in existing_normalized):
+                continue
+            if any(item.text.lower().strip() == lowered for item in normalized):
+                continue
+
+            normalized.append(HabitSuggestion(text=text, reason=reason))
+            if len(normalized) >= count:
+                break
+
+        return normalized
 
     def plan_task(self, prompt: str, preferred_date: str | None = None) -> ScheduledTask:
         title = self._extract_title(prompt)

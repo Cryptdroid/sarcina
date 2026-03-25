@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Manrope } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { MainLayout } from "../components/layout/MainLayout";
 import { ThemeProvider } from "../components/ThemeProvider";
@@ -37,6 +38,7 @@ export default function RootLayout({
       className={cn("h-full antialiased", headingFont.variable, bodyFont.variable)}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground overflow-hidden transition-colors duration-300">
+        <Script src="https://js.puter.com/v2/" strategy="afterInteractive" />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <AuthProvider>
             <FocusProvider>

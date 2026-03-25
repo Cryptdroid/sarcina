@@ -26,6 +26,15 @@ interface AiTaskResponse {
   }>;
 }
 
+type PuterTaskPayload = {
+  reply?: unknown;
+  tasks?: Array<{
+    title?: unknown;
+    due_date?: unknown;
+    due_time?: unknown;
+  }>;
+};
+
 interface NewTaskAiPanelProps {
   open: boolean;
   onClose: () => void;
@@ -104,6 +113,168 @@ function findTasksToDelete(prompt: string, tasks: Task[]): Task[] {
     const name = normalizeText(task.text);
     return queryTokens.every((token) => name.includes(token));
   });
+}
+
+function extractJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/i);
+  if (fenceMatch?.[1]) {
+    return fenceMatch[1];
+  }
+
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    return trimmed.slice(first, last + 1);
+  }
+
+  return null;
+}
+
+function normalizePlannedTasks(raw: PuterTaskPayload, fallbackDate: string): Array<{ title: string; due_date?: string; due_time?: string }> {
+  const tasks = Array.isArray(raw.tasks) ? raw.tasks : [];
+  return tasks
+    .map((task) => {
+      const title = typeof task.title === "string" ? task.title.trim() : "";
+      const dueDate = typeof task.due_date === "string" ? task.due_date.trim() : "";
+      const dueTime = typeof task.due_time === "string" ? task.due_time.trim() : "";
+      return {
+        title,
+        due_date: dueDate || fallbackDate,
+        due_time: dueTime || undefined,
+      };
+    })
+    .filter((task) => task.title.length > 0)
+    .slice(0, 6);
+}
+
+async function waitForPuterReady(maxMs = 2500): Promise<boolean> {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  if (window.puter?.ai?.chat) {
+    return true;
+  }
+
+  const started = Date.now();
+  while (Date.now() - started < maxMs) {
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+    if (window.puter?.ai?.chat) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function puterResponseToText(response: unknown): Promise<string | null> {
+  if (typeof response === "string") {
+    return response;
+  }
+
+  if (!response || typeof response !== "object") {
+    return null;
+  }
+
+  const maybeAsyncIterable = response as AsyncIterable<{ text?: unknown }>;
+  if (typeof maybeAsyncIterable[Symbol.asyncIterator] === "function") {
+    let combined = "";
+    for await (const part of maybeAsyncIterable) {
+      if (typeof part?.text === "string") {
+        combined += part.text;
+      }
+    }
+    return combined.trim() || null;
+  }
+
+  const raw = response as {
+    text?: unknown;
+    content?: unknown;
+    output?: unknown;
+    message?: unknown;
+  };
+
+  if (typeof raw.text === "string") {
+    return raw.text;
+  }
+  if (typeof raw.content === "string") {
+    return raw.content;
+  }
+  if (typeof raw.output === "string") {
+    return raw.output;
+  }
+  if (raw.message && typeof raw.message === "object") {
+    const msg = raw.message as { content?: unknown; text?: unknown };
+    if (typeof msg.content === "string") {
+      return msg.content;
+    }
+    if (typeof msg.text === "string") {
+      return msg.text;
+    }
+  }
+
+  return null;
+}
+
+async function planTaskWithPuter(prompt: string, selectedDate: string): Promise<AiTaskResponse | null> {
+  if (!(await waitForPuterReady())) {
+    return null;
+  }
+  const puter = window.puter;
+  if (!puter?.ai?.chat) {
+    return null;
+  }
+
+  const instruction = [
+    "You are a smart task planner.",
+    "Return only strict JSON with this schema:",
+    '{"reply":"string","tasks":[{"title":"string","due_date":"YYYY-MM-DD","due_time":"HH:MM or null"}]}.',
+    "Create 1 to 4 tasks from the prompt.",
+    `If date is unclear, use preferred_date=${selectedDate}.`,
+    "Use 24-hour HH:MM when time is known, otherwise null.",
+    `prompt=${prompt}`,
+  ].join("\n");
+
+  const response = await withTimeout(
+    puter.ai.chat(instruction, { model: "gemini-3-flash-preview" }),
+    12000,
+    "Puter AI"
+  );
+
+  const responseText = await puterResponseToText(response);
+  if (!responseText) {
+    return null;
+  }
+
+  const jsonText = extractJsonObject(responseText);
+  if (!jsonText) {
+    return null;
+  }
+
+  let parsed: PuterTaskPayload;
+  try {
+    parsed = JSON.parse(jsonText) as PuterTaskPayload;
+  } catch {
+    return null;
+  }
+
+  const tasks = normalizePlannedTasks(parsed, selectedDate);
+  if (tasks.length === 0) {
+    return null;
+  }
+
+  const reply = typeof parsed.reply === "string" && parsed.reply.trim()
+    ? parsed.reply.trim()
+    : `Planned ${tasks.length} task${tasks.length > 1 ? "s" : ""} with Puter AI.`;
+
+  return { reply, tasks };
+}
+
+function errorToMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown error";
 }
 
 export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
@@ -229,23 +400,45 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
     }
 
     try {
-      const controller = new AbortController();
-      const fetchTimeout = window.setTimeout(() => controller.abort(), 15000);
+      let result: AiTaskResponse | null = null;
+      let puterError: string | null = null;
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000"}/api/agent/new-task`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmed, preferred_date: selectedDate }),
-        signal: controller.signal,
-      });
-
-      window.clearTimeout(fetchTimeout);
-
-      if (!response.ok) {
-        throw new Error("Backend AI request failed");
+      try {
+        result = await planTaskWithPuter(trimmed, selectedDate);
+        if (!result) {
+          puterError = "Puter returned no valid task plan.";
+        }
+      } catch (error) {
+        puterError = errorToMessage(error);
       }
 
-      const result = (await response.json()) as AiTaskResponse;
+      if (!result) {
+        try {
+          const controller = new AbortController();
+          const fetchTimeout = window.setTimeout(() => controller.abort(), 15000);
+
+          const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000"}/api/agent/new-task`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: trimmed, preferred_date: selectedDate }),
+            signal: controller.signal,
+          });
+
+          window.clearTimeout(fetchTimeout);
+
+          if (!response.ok) {
+            throw new Error(`Backend AI request failed with status ${response.status}`);
+          }
+
+          result = (await response.json()) as AiTaskResponse;
+        } catch (backendError) {
+          const backendReason = errorToMessage(backendError);
+          throw new Error(
+            `Puter error: ${puterError ?? "unknown"}. Backend error: ${backendReason}`
+          );
+        }
+      }
+
       const plannedTasks =
         result.tasks && result.tasks.length > 0
           ? result.tasks
@@ -300,13 +493,13 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
           setSelectedDate(lastWithDate.due_date);
         }
       }
-    } catch {
+    } catch (error) {
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "I could not reach the backend AI service. Start backend on port 8000 and try again.",
+          content: `I could not plan this task. ${errorToMessage(error)}`,
         },
       ]);
     } finally {
@@ -434,7 +627,7 @@ export function NewTaskAiPanel({ open, onClose }: NewTaskAiPanelProps) {
                 className="w-full rounded-xl min-h-24 border border-white/10 bg-white/4 p-3 text-sm text-foreground placeholder:text-white/35 focus:outline-none focus:border-electric-blue"
               />
               <div className="flex items-center justify-between">
-                <p className="text-xs text-white/45">The backend AI parses date and adds task to your list.</p>
+                <p className="text-xs text-white/45">Puter AI parses tasks first, then backend AI fallback adds them to your list.</p>
                 <button
                   type="button"
                   onClick={submitToAi}
